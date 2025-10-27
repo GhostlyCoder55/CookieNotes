@@ -8,14 +8,44 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var recipeManager = RecipeManager()
+    @StateObject private var notificationManager = NotificationManager()
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        ZStack {
+            TabView {
+                RecipeListView()
+                    .environmentObject(recipeManager)
+                    .tabItem {
+                        Image(systemName: "book.closed")
+                        Text("Recipes")
+                    }
+                
+                SearchView()
+                    .environmentObject(recipeManager)
+                    .tabItem {
+                        Image(systemName: "magnifyingglass")
+                        Text("Search")
+                    }
+                
+                AboutView()
+                    .tabItem {
+                        Image(systemName: "info.circle")
+                        Text("About")
+                    }
+            }
+            .accentColor(AppTheme.secondaryBrown)
+            .preferredColorScheme(.dark)
+            
+            // Login prompt overlay
+            LoginPromptOverlay(notificationManager: notificationManager)
         }
-        .padding()
+        .onAppear {
+            // Mark user as active when they open the app
+            notificationManager.markUserAsActive()
+            // Connect the managers
+            recipeManager.setNotificationManager(notificationManager)
+        }
     }
 }
 
