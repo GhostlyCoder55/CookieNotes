@@ -15,13 +15,10 @@ struct AboutView: View {
                     .ignoresSafeArea()
                 
                 ScrollView {
+                    
                     VStack(spacing: AppTheme.paddingLarge) {
                         // Header
                         VStack(spacing: AppTheme.paddingMedium) {
-                            Text("CookieNotes")
-                                .font(AppTheme.largeTitle)
-                                .foregroundColor(AppTheme.primaryText)
-                            
                             Text("Your Personal Cooking Journal")
                                 .font(AppTheme.headline)
                                 .foregroundColor(AppTheme.secondaryText)
@@ -64,7 +61,14 @@ struct AboutView: View {
                 }
             }
             .navigationTitle("About")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("About")
+                        .font(AppTheme.largeTitle)
+                        .foregroundColor(AppTheme.primaryText)
+                }
+            }
         }
         .preferredColorScheme(.dark)
     }
