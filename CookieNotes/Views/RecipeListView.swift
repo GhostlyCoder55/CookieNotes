@@ -72,7 +72,11 @@ struct RecipeListView: View {
             }
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $searchText, prompt: "Search your recipes")
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search your recipes"
+            )
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -181,16 +185,14 @@ struct RecipeListView: View {
             ForEach(blocks) { block in
                 switch block.kind {
                 case .items(let indices):
+                    let recipes = indices.compactMap { items.indices.contains($0) ? items[$0] : nil }
                     LazyVGrid(columns: columns, spacing: AppTheme.paddingMedium) {
-                        ForEach(indices, id: \.self) { index in
-                            if items.indices.contains(index) {
-                                let recipe = items[index]
-                                NavigationLink(value: recipe.recipeID) {
-                                    RecipeCard(recipe: recipe)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("recipe-card")
+                        ForEach(recipes, id: \.recipeID) { recipe in
+                            NavigationLink(value: recipe.recipeID) {
+                                RecipeCard(recipe: recipe)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("recipe-card")
                         }
                     }
                     .id("recipes-grid-\(items.count)-\(block.id)")
@@ -199,7 +201,7 @@ struct RecipeListView: View {
                 }
             }
         }
-        .id("library-feed-\(items.map(\.recipeID.uuidString).joined(separator: ","))")
+        .id("library-feed-\(items.count)")
     }
 }
 

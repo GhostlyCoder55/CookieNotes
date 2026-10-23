@@ -99,7 +99,7 @@ final class Recipe {
     var resolvedCoverElements: [String] {
         let dishCategories: Set<RecipeCategory> = [.dinner, .dessert, .snack]
         let legacySingles: [RecipeCategory: Set<String>] = [
-            .dinner: ["roast_chicken", "spaghetti_bowl", "plated_meal"],
+            .dinner: ["roast_chicken", "spaghetti_bowl", "plated_meal", "steak", "salmon_steak", "ribeye_steak", "soup_bowl"],
             .dessert: ["cupcake"],
             .snack: ["cookie"]
         ]

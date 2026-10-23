@@ -11,6 +11,9 @@ struct DiscoveredRecipeSummary: Identifiable, Hashable {
     let thumbnailURL: URL?
     let category: String?
     let area: String?
+    var illustrationIconID: String? = nil
+
+    var isLocal: Bool { id.hasPrefix("local-") }
 }
 
 struct DiscoveredRecipeDetail: Identifiable, Hashable {
@@ -24,9 +27,20 @@ struct DiscoveredRecipeDetail: Identifiable, Hashable {
     let sourceURL: String?
     let youtubeURL: String?
     let tags: [String]
+    var illustrationIconID: String? = nil
+
+    var isLocal: Bool { id.hasPrefix("local-") }
 
     var attribution: String {
-        var parts = ["TheMealDB"]
+        let sourceLabel: String
+        if let sourceURL, sourceURL.contains("epicurious.com") {
+            sourceLabel = "Epicurious"
+        } else if isLocal {
+            sourceLabel = "CookieNotes kitchen"
+        } else {
+            sourceLabel = "the meal database"
+        }
+        var parts = [sourceLabel]
         if let area, !area.isEmpty { parts.append(area) }
         if let category, !category.isEmpty { parts.append(category) }
         return parts.joined(separator: " · ")
@@ -52,6 +66,8 @@ enum MealDBError: LocalizedError {
 actor MealDBClient {
     static let shared = MealDBClient()
 
+    private var cachedAreas: [String]?
+
     /// Development falls back to TheMealDB test key `1`. Set `COOKIENOTES_MEALDB_API_KEY` before App Store release.
     private var apiKey: String {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CookieNotesMealDBAPIKey") as? String ?? ""
@@ -74,24 +90,88 @@ actor MealDBClient {
     func search(query: String) async throws -> [DiscoveredRecipeSummary] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
+
+        // Country / region queries (e.g. "Nigeria", "Thai") browse by area.
+        if let area = LocalMealCatalog.resolvedArea(for: trimmed) {
+            return try await filter(area: area)
+        }
+        if let area = await matchedRemoteArea(for: trimmed) {
+            return try await filter(area: area)
+        }
+
+        let local = LocalMealCatalog.search(query: trimmed)
         let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
         let url = baseURL.appendingPathComponent("search.php").appending(queryItems: [URLQueryItem(name: "s", value: trimmed)])
             ?? URL(string: baseURL.absoluteString + "search.php?s=\(encoded)")!
-        let meals = try await fetchMeals(url: url)
-        return meals.map(\.asSummary)
+        let remote: [DiscoveredRecipeSummary]
+        do {
+            remote = try await fetchMeals(url: url).map(\.asSummary)
+        } catch {
+            remote = []
+            if local.isEmpty { throw error }
+        }
+        return Self.merging(local: local, remote: remote)
     }
 
     func filter(category: String) async throws -> [DiscoveredRecipeSummary] {
         let url = URL(string: baseURL.absoluteString + "filter.php?c=\(category.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? category)")!
         let meals = try await fetchMeals(url: url)
-        return meals.map { $0.asSummary(categoryHint: category) }
+        let remote = meals.map { $0.asSummary(categoryHint: category) }
+        let local = LocalMealCatalog.shared
+            .filter { $0.category.caseInsensitiveCompare(category) == .orderedSame }
+            .map(\.summary)
+        return Self.merging(local: local, remote: remote)
+    }
+
+    func filter(area: String) async throws -> [DiscoveredRecipeSummary] {
+        let local = LocalMealCatalog.filter(area: area)
+        let encoded = area.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? area
+        let url = URL(string: baseURL.absoluteString + "filter.php?a=\(encoded)")!
+        let remote: [DiscoveredRecipeSummary]
+        do {
+            let meals = try await fetchMeals(url: url)
+            remote = meals.map { meal in
+                DiscoveredRecipeSummary(
+                    id: meal.idMeal ?? UUID().uuidString,
+                    name: meal.strMeal ?? "Recipe",
+                    thumbnailURL: URL(string: meal.strMealThumb ?? ""),
+                    category: meal.strCategory,
+                    area: area
+                )
+            }
+        } catch {
+            remote = []
+            if local.isEmpty { throw error }
+        }
+        return Self.merging(local: local, remote: remote)
     }
 
     func lookup(id: String) async throws -> DiscoveredRecipeDetail {
+        if let local = LocalMealCatalog.detail(id: id) {
+            return local
+        }
         let url = URL(string: baseURL.absoluteString + "lookup.php?i=\(id)")!
         let meals = try await fetchMeals(url: url)
         guard let meal = meals.first else { throw MealDBError.empty }
         return meal.asDetail
+    }
+
+    func areas() async throws -> [String] {
+        if let cachedAreas { return cachedAreas }
+        let url = baseURL.appendingPathComponent("list.php").appending(queryItems: [URLQueryItem(name: "a", value: "list")])
+            ?? URL(string: baseURL.absoluteString + "list.php?a=list")!
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw MealDBError.badResponse
+        }
+        struct ListEnvelope: Decodable {
+            struct Item: Decodable { let strArea: String? }
+            let meals: [Item]?
+        }
+        let decoded = try JSONDecoder().decode(ListEnvelope.self, from: data)
+        let list = (decoded.meals ?? []).compactMap(\.strArea)
+        cachedAreas = list
+        return list
     }
 
     func categories() async throws -> [String] {
@@ -120,6 +200,29 @@ actor MealDBClient {
         } catch {
             throw MealDBError.decoding
         }
+    }
+
+    private func matchedRemoteArea(for query: String) async -> String? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard trimmed.count >= 3 else { return nil }
+        let areas = (try? await areas()) ?? []
+        if let exact = areas.first(where: { $0.lowercased() == trimmed }) {
+            return exact
+        }
+        // Prefer demonyms / country names that start with the query ("ghan" → Ghanaian).
+        return areas.first(where: { $0.lowercased().hasPrefix(trimmed) })
+            ?? areas.first(where: { $0.lowercased().contains(trimmed) })
+    }
+
+    private static func merging(local: [DiscoveredRecipeSummary], remote: [DiscoveredRecipeSummary]) -> [DiscoveredRecipeSummary] {
+        var seen = Set<String>()
+        var merged: [DiscoveredRecipeSummary] = []
+        for item in local + remote {
+            let key = item.name.lowercased()
+            guard seen.insert(key).inserted else { continue }
+            merged.append(item)
+        }
+        return merged
     }
 }
 

@@ -21,10 +21,20 @@ struct IngredientPickerView: View {
             base = IngredientCatalog.allIcons.filter { !$0.hasPrefix("cat_") && !$0.hasPrefix("extra_") }
         }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return base }
-        return base.filter {
-            IngredientCatalog.displayName(for: $0).localizedCaseInsensitiveContains(trimmed)
-                || $0.localizedCaseInsensitiveContains(trimmed)
+        let matched: [String]
+        if trimmed.isEmpty {
+            matched = base
+        } else {
+            matched = base.filter {
+                IngredientCatalog.displayName(for: $0).localizedCaseInsensitiveContains(trimmed)
+                    || $0.localizedCaseInsensitiveContains(trimmed)
+            }
+        }
+        // One card per display name so search never shows duplicates like two "Baking soda"s.
+        var seenNames = Set<String>()
+        return matched.filter { icon in
+            let key = IngredientCatalog.displayName(for: icon).lowercased()
+            return seenNames.insert(key).inserted
         }
     }
 

@@ -92,11 +92,7 @@ struct RecipeEditableLines: View {
 
                     if lines.count > 1 {
                         Button {
-                            let removedID = line.id
-                            lines.removeAll { $0.id == removedID }
-                            if focusedLineID == removedID {
-                                focusedLineID = lines.last?.id
-                            }
+                            removeLine(id: line.id)
                         } label: {
                             Image(systemName: "minus.circle.fill")
                                 .foregroundStyle(AppTheme.error.opacity(0.85))
@@ -120,6 +116,18 @@ struct RecipeEditableLines: View {
         lines.append(line)
         DispatchQueue.main.async {
             focusedLineID = line.id
+        }
+    }
+
+    private func removeLine(id: UUID) {
+        // Clear focus before mutating so TextField bindings are not torn down mid-update.
+        focusedLineID = nil
+        DispatchQueue.main.async {
+            guard lines.count > 1 else { return }
+            lines.removeAll { $0.id == id }
+            if lines.isEmpty {
+                lines = [EditableLine(text: "")]
+            }
         }
     }
 

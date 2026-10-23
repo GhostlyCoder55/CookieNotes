@@ -38,7 +38,7 @@ struct AboutView: View {
                         )
                         aboutBlock(
                             title: "Discover",
-                            body: "Search online recipes from TheMealDB, preview them, and save keepers into your journal with attribution."
+                            body: "Explore recipes from the database, preview the details, and save your favorites directly to your journal."
                         )
                         aboutBlock(
                             title: "Privacy and ads",

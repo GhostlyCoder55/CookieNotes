@@ -37,19 +37,26 @@ struct AdBannerRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ banner: BannerView, context: Context) {
-        let size = currentOrientationAnchoredAdaptiveBanner(width: width)
+        let usableWidth = max(floor(width), 1)
+        let size = currentOrientationAnchoredAdaptiveBanner(width: usableWidth)
         guard size.size.width > 0, size.size.height > 0 else { return }
-        if banner.adSize.size != size.size || context.coordinator.needsLoad {
+
+        // Avoid reload thrash when GeometryReader reports tiny width deltas across tabs.
+        let widthChanged = abs(context.coordinator.lastWidth - usableWidth) >= 1
+        if widthChanged || context.coordinator.needsLoad || banner.adSize.size != size.size {
             banner.adSize = size
+            banner.frame = CGRect(origin: .zero, size: CGSize(width: usableWidth, height: size.size.height))
+            context.coordinator.lastWidth = usableWidth
             context.coordinator.needsLoad = false
             banner.rootViewController = InterfaceLocator.topViewController()
             banner.load(AdRequestFactory.makeRequest())
         }
-        onHeight(size.size.height)
+        onHeight(min(size.size.height, 60))
     }
 
     final class Coordinator: NSObject, BannerViewDelegate {
         var needsLoad = true
+        var lastWidth: CGFloat = 0
         let onHeight: (CGFloat) -> Void
         let onFailure: () -> Void
 
@@ -59,7 +66,7 @@ struct AdBannerRepresentable: UIViewRepresentable {
         }
 
         func bannerViewDidReceiveAd(_ bannerView: BannerView) {
-            onHeight(bannerView.adSize.size.height)
+            onHeight(min(bannerView.adSize.size.height, 60))
         }
 
         func bannerView(_ bannerView: BannerView, didFailToReceiveAdWithError error: Error) {

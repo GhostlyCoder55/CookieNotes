@@ -48,8 +48,7 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
         case .uncategorized: "veggie_plate"
         case .breakfast: "pancakes"
         case .lunch: "salad_bowl"
-        // Multi-element dish covers (plate / bowl compositions, not a single item)
-        case .dinner: "plated_meal"
+        case .dinner: "soup_bowl"
         case .dessert: "berries_bowl"
         case .snack: "candy_bowl"
         case .drinks: "berry_smoothie"
@@ -61,8 +60,7 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
     var coverElements: [String] {
         switch self {
         case .dinner:
-            // Complete meat meal: steak, seafood, and roast chicken.
-            return ["steak", "salmon_steak", "roast_chicken"]
+            return ["soup_bowl"]
         case .dessert:
             return ["strawberry", "ice_cream", "cupcake"]
         case .snack:

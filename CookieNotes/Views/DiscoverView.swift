@@ -6,21 +6,60 @@
 import SwiftData
 import SwiftUI
 
+private enum DiscoverBrowseChip: Hashable, Identifiable {
+    case category(String)
+    case area(String)
+
+    var id: String {
+        switch self {
+        case .category(let name): "c:\(name)"
+        case .area(let name): "a:\(name)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .category(let name), .area(let name): name
+        }
+    }
+}
+
 struct DiscoverView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var query = ""
     @State private var results: [DiscoveredRecipeSummary] = []
     @State private var categories: [String] = ["Seafood", "Chicken", "Dessert", "Vegetarian", "Pasta", "Breakfast"]
-    @State private var selectedCategory: String?
+    @State private var selectedChip: DiscoverBrowseChip?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var path = NavigationPath()
     @State private var saveNotice: String?
+    @State private var searchGeneration = 0
+
+    /// Cuisine chips — local catalog fills West African + curated French / North American / Latino & islands.
+    private let cuisineAreas: [String] = [
+        // West Africa (local catalog)
+        "Nigerian", "Ghanaian", "Senegalese",
+        // French & North America
+        "French", "American", "Canadian", "Mexican",
+        // Latino & islands
+        "Jamaican", "Caribbean",
+        // Wider Africa
+        "Egyptian", "Moroccan", "Tunisian", "Kenyan",
+        // Asia (East + Southeast)
+        "Chinese", "Japanese", "Thai", "Vietnamese", "Malaysian", "Filipino",
+        // Middle East
+        "Turkish", "Syrian", "Saudi Arabian"
+    ]
 
     private let columns = [
         GridItem(.flexible(), spacing: 14),
         GridItem(.flexible(), spacing: 14)
     ]
+
+    private var browseChips: [DiscoverBrowseChip] {
+        categories.map(DiscoverBrowseChip.category) + cuisineAreas.map(DiscoverBrowseChip.area)
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -42,13 +81,15 @@ struct DiscoverView: View {
             }
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $query, prompt: "Search online recipes")
-            .onSubmit(of: .search) { Task { await runSearch() } }
+            // Keep the search field visible after tab switches (same reliability as Library).
+            .searchable(
+                text: $query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search recipes or countries"
+            )
+            .onSubmit(of: .search) { Task { await runSearch(fromTyping: false) } }
             .onChange(of: query) { _, newValue in
-                if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   selectedCategory == nil {
-                    results = []
-                }
+                scheduleLiveSearch(for: newValue)
             }
             .navigationDestination(for: String.self) { mealID in
                 DiscoverDetailView(mealID: mealID) { notice in
@@ -66,7 +107,7 @@ struct DiscoverView: View {
             Text("Find something delicious")
                 .font(AppTheme.title)
                 .foregroundStyle(AppTheme.primaryText)
-            Text("Search the meal, preview a recipe, then save it to your journal.")
+            Text("Search by dish or country.")
                 .font(AppTheme.body)
                 .foregroundStyle(AppTheme.secondaryText)
         }
@@ -75,14 +116,14 @@ struct DiscoverView: View {
     private var categoryRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(categories, id: \.self) { category in
+                ForEach(browseChips) { chip in
                     ColorChip(
-                        title: category,
-                        selected: selectedCategory == category
+                        title: chip.title,
+                        selected: selectedChip == chip
                     ) {
-                        selectedCategory = category
+                        selectedChip = chip
                         query = ""
-                        Task { await runCategory(category) }
+                        Task { await runChip(chip) }
                     }
                 }
             }
@@ -128,10 +169,10 @@ struct DiscoverView: View {
     }
 
     private func retry() async {
-        if let selectedCategory {
-            await runCategory(selectedCategory)
+        if let selectedChip {
+            await runChip(selectedChip)
         } else {
-            await runSearch()
+            await runSearch(fromTyping: false)
         }
     }
 
@@ -139,35 +180,75 @@ struct DiscoverView: View {
         do {
             let remote = try await MealDBClient.shared.categories()
             if !remote.isEmpty {
-                categories = Array(remote.prefix(10))
+                // Prefer a balanced meal-type strip; cuisines are added separately.
+                let preferred = ["Beef", "Breakfast", "Chicken", "Dessert", "Pasta", "Seafood", "Vegetarian", "Vegan", "Lamb", "Pork"]
+                let ordered = preferred.filter { remote.contains($0) } + remote.filter { !preferred.contains($0) }
+                categories = Array(ordered.prefix(8))
             }
         } catch {
             // Keep curated defaults.
         }
     }
 
-    private func runSearch() async {
+    private func scheduleLiveSearch(for raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchGeneration += 1
+        let generation = searchGeneration
+
+        if trimmed.isEmpty {
+            if selectedChip == nil {
+                results = []
+                errorMessage = nil
+                isLoading = false
+            }
+            return
+        }
+
+        // Suggest as the user types (debounced) — includes dish names and countries.
+        Task {
+            try? await Task.sleep(for: .milliseconds(280))
+            guard generation == searchGeneration else { return }
+            await runSearch(fromTyping: true)
+        }
+    }
+
+    private func runSearch(fromTyping: Bool) async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        selectedCategory = nil
-        isLoading = true
+        let generation = searchGeneration
+        selectedChip = nil
         errorMessage = nil
-        defer { isLoading = false }
+        if !fromTyping || results.isEmpty {
+            isLoading = true
+        }
+        defer {
+            if generation == searchGeneration {
+                isLoading = false
+            }
+        }
         do {
-            results = try await MealDBClient.shared.search(query: trimmed)
-            if results.isEmpty { errorMessage = nil }
+            let found = try await MealDBClient.shared.search(query: trimmed)
+            guard generation == searchGeneration else { return }
+            results = found
         } catch {
+            guard generation == searchGeneration else { return }
             errorMessage = error.localizedDescription
             results = []
         }
     }
 
-    private func runCategory(_ category: String) async {
+    private func runChip(_ chip: DiscoverBrowseChip) async {
+        searchGeneration += 1
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            results = try await MealDBClient.shared.filter(category: category)
+            switch chip {
+            case .category(let category):
+                results = try await MealDBClient.shared.filter(category: category)
+            case .area(let area):
+                results = try await MealDBClient.shared.filter(area: area)
+            }
         } catch {
             errorMessage = error.localizedDescription
             results = []
@@ -180,16 +261,22 @@ struct DiscoverCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            AsyncImage(url: recipe.thumbnailURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .failure:
-                    AppTheme.blush
-                default:
-                    AppTheme.blush.overlay(ProgressView())
+            Group {
+                if let url = recipe.thumbnailURL {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            illustrationFallback
+                        default:
+                            AppTheme.blush.overlay(ProgressView())
+                        }
+                    }
+                } else {
+                    illustrationFallback
                 }
             }
             .frame(maxWidth: .infinity)
@@ -204,15 +291,22 @@ struct DiscoverCard: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(recipe.category ?? " ")
+            Text(recipe.area ?? recipe.category ?? " ")
                 .font(AppTheme.smallCaption.weight(.semibold))
                 .foregroundStyle(AppTheme.accentAction)
                 .lineLimit(1)
-                .opacity(recipe.category == nil ? 0 : 1)
+                .opacity((recipe.area ?? recipe.category) == nil ? 0 : 1)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
+    }
+
+    private var illustrationFallback: some View {
+        AppTheme.blush
+            .overlay {
+                FoodIconView(iconID: recipe.illustrationIconID ?? "salad_bowl", size: 72)
+            }
     }
 }
 
@@ -234,12 +328,22 @@ struct DiscoverDetailView: View {
             } else if let detail {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
-                        AsyncImage(url: detail.thumbnailURL) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().scaledToFill()
-                            default:
-                                AppTheme.blush.frame(height: 220)
+                        Group {
+                            if let url = detail.thumbnailURL {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().scaledToFill()
+                                    default:
+                                        AppTheme.blush.overlay {
+                                            FoodIconView(iconID: detail.illustrationIconID ?? "salad_bowl", size: 100)
+                                        }
+                                    }
+                                }
+                            } else {
+                                AppTheme.blush.overlay {
+                                    FoodIconView(iconID: detail.illustrationIconID ?? "salad_bowl", size: 100)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity)

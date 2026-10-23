@@ -9,7 +9,9 @@ struct AdvertisementSlot: View {
     let placementID: String
     @ObservedObject private var ads = AdMobController.shared
     @State private var failed = false
-    @State private var height: CGFloat = 60
+
+    /// Fixed banner well so tab switches and adaptive sizes cannot blow out layout.
+    private let bannerWellHeight: CGFloat = 60
 
     var body: some View {
         if ads.canPresentAds && AdConfiguration.current.mode != .disabled && !failed {
@@ -21,21 +23,28 @@ struct AdvertisementSlot: View {
                     .accessibilityAddTraits(.isHeader)
 
                 GeometryReader { geometry in
+                    let width = max(floor(geometry.size.width), 1)
                     AdBannerRepresentable(
-                        width: geometry.size.width,
-                        onHeight: { if $0 > 1 { height = $0 } },
+                        width: width,
+                        onHeight: { _ in },
                         onFailure: { failed = true }
                     )
+                    .frame(width: width, height: bannerWellHeight, alignment: .center)
+                    .clipped()
                 }
-                .frame(height: max(height, 50))
+                .frame(height: bannerWellHeight)
+                .frame(maxWidth: .infinity)
+                .clipped()
             }
             .padding(AppTheme.paddingMedium)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(AppTheme.adBackground)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
                     .stroke(AppTheme.separator, lineWidth: 1)
             )
+            .clipped()
             .accessibilityLabel("Advertisement")
             .accessibilityIdentifier("advertisement-slot-\(placementID)")
             .id("\(placementID)-\(ads.reloadToken)")
