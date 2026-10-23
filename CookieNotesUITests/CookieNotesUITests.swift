@@ -2,42 +2,49 @@
 //  CookieNotesUITests.swift
 //  CookieNotesUITests
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
 import XCTest
 
 final class CookieNotesUITests: XCTestCase {
-
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
-    @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchArguments = [
+            "-CookieNotesSkipTutorial",
+            "-CookieNotesSkipConsent",
+            "-CookieNotesSkipWelcome"
+        ]
         app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        return app
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
-        if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
-            // This measures how long it takes to launch your application.
-            measure(metrics: [XCTApplicationLaunchMetric()]) {
-                XCUIApplication().launch()
-            }
-        }
+    func testEmptyLibraryShowsAddPrompt() throws {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Your journal is empty"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["30 min or less"].exists)
+        XCTAssertFalse(app.staticTexts["ADVERTISEMENT"].exists)
+    }
+
+    @MainActor
+    func testDiscoverTabOpens() throws {
+        let app = launchApp()
+        XCTAssertTrue(app.tabBars.buttons["Discover"].waitForExistence(timeout: 8))
+        app.tabBars.buttons["Discover"].tap()
+        XCTAssertTrue(app.staticTexts["Find something delicious"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testAddRecipeScreenOpens() throws {
+        let app = launchApp()
+        let addButton = app.buttons["Add recipe"]
+        XCTAssertTrue(addButton.waitForExistence(timeout: 8))
+        addButton.tap()
+        XCTAssertTrue(app.navigationBars["New Recipe"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["ADVERTISEMENT"].exists)
     }
 }

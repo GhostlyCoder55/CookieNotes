@@ -2,210 +2,314 @@
 //  AddRecipeView.swift
 //  CookieNotes
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
+import PhotosUI
+import SwiftData
 import SwiftUI
 
 struct AddRecipeView: View {
-    @EnvironmentObject var recipeManager: RecipeManager
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    
+
     @State private var name = ""
-    @State private var ingredients = [""]
-    @State private var instructions = [""]
+    @State private var ingredients = [EditableLine(text: "")]
+    @State private var instructions = [EditableLine(text: "")]
+    @State private var notes = ""
+    @State private var source = ""
     @State private var prepTime = 0
     @State private var cookTime = 0
-    
+    @State private var servings = 2
+    @State private var category: RecipeCategory = .uncategorized
+    @State private var coverIconID = "veggie_plate"
+    @State private var usesCategoryCover = false
+    @State private var photos: [PendingPhoto] = []
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var viewerData: [Data]?
+    @State private var viewerIndex = 0
+    @State private var formError: String?
+    @State private var showingIngredientPicker = false
+    @State private var illustrationTargetID: UUID?
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                AppTheme.background
-                    .ignoresSafeArea()
-                
+                AppTheme.background.ignoresSafeArea()
                 ScrollView {
-                    VStack(spacing: AppTheme.paddingLarge) {
-                        // Recipe Name
-                        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
-                            Text("Recipe Name")
-                                .font(AppTheme.headline)
-                                .foregroundColor(AppTheme.primaryText)
-                            
-                            TextField("Enter recipe name", text: $name)
+                    VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
+                        coverPicker
+
+                        RecipeFormSection(title: "Recipe Name") {
+                            TextField("Weeknight chili, banana bread…", text: $name)
                                 .textFieldStyle(CustomTextFieldStyle())
+                                .textInputAutocapitalization(.words)
                         }
-                        
-                        // Time Section
-                        HStack(spacing: AppTheme.paddingMedium) {
-                            TimeInputView(title: "Prep Time", value: $prepTime)
-                            TimeInputView(title: "Cook Time", value: $cookTime)
+
+                        categoryPicker
+                        RecipeTimeRow(prepTime: $prepTime, cookTime: $cookTime, servings: $servings)
+
+                        RecipeEditableLines(
+                            title: "Ingredients",
+                            addTitle: "Add",
+                            placeholder: "Ingredient",
+                            lines: $ingredients,
+                            illustrated: true,
+                            onPickIllustration: { lineID in
+                                illustrationTargetID = lineID
+                                showingIngredientPicker = true
+                            }
+                        )
+
+                        RecipeEditableLines(
+                            title: "Instructions",
+                            addTitle: "Add Step",
+                            placeholder: "Write the step…",
+                            lines: $instructions,
+                            numbered: true
+                        )
+
+                        RecipeFormSection(title: "Notes") {
+                            NotesEditor(text: $notes)
                         }
-                        
-                        // Ingredients
-                        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
-                            HStack {
-                                Text("Ingredients")
-                                    .font(AppTheme.headline)
-                                    .foregroundColor(AppTheme.primaryText)
-                                Spacer()
-                                Button("Add Ingredient") {
-                                    ingredients.append("")
-                                }
-                                .font(AppTheme.caption)
-                                .foregroundColor(AppTheme.secondaryBrown)
-                            }
-                            
-                            ForEach(ingredients.indices, id: \.self) { index in
-                                HStack {
-                                    TextField("Ingredient \(index + 1)", text: $ingredients[index])
-                                        .textFieldStyle(CustomTextFieldStyle())
-                                    
-                                    if ingredients.count > 1 {
-                                        Button(action: { removeIngredient(at: index) }) {
-                                            Image(systemName: "minus.circle.fill")
-                                                .foregroundColor(.red)
-                                        }
-                                    }
-                                }
-                            }
+
+                        RecipeFormSection(title: "Source") {
+                            TextField("Optional link or where it came from", text: $source)
+                                .textFieldStyle(CustomTextFieldStyle())
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
                         }
-                        
-                        // Instructions
-                        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
-                            HStack {
-                                Text("Instructions")
-                                    .font(AppTheme.headline)
-                                    .foregroundColor(AppTheme.primaryText)
-                                Spacer()
-                                Button("Add Step") {
-                                    instructions.append("")
-                                }
-                                .font(AppTheme.caption)
-                                .foregroundColor(AppTheme.secondaryBrown)
-                            }
-                            
-                            ForEach(instructions.indices, id: \.self) { index in
-                                HStack(alignment: .top) {
-                                    Text("\(index + 1).")
-                                        .font(AppTheme.body)
-                                        .foregroundColor(AppTheme.secondaryBrown)
-                                        .frame(width: 30, alignment: .leading)
-                                    
-                                    TextField("Step \(index + 1)", text: $instructions[index], axis: .vertical)
-                                        .textFieldStyle(CustomTextFieldStyle())
-                                        .lineLimit(3...6)
-                                    
-                                    if instructions.count > 1 {
-                                        Button(action: { removeInstruction(at: index) }) {
-                                            Image(systemName: "minus.circle.fill")
-                                                .foregroundColor(.red)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
+
+                        photoSection
                     }
                     .padding(AppTheme.paddingMedium)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("New Recipe")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(AppTheme.secondaryText)
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveRecipe()
-                    }
-                    .foregroundColor(AppTheme.secondaryBrown)
-                    .disabled(name.isEmpty)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { saveRecipe() }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(canSave ? AppTheme.burntOrange : AppTheme.tertiaryText)
+                        .disabled(!canSave)
                 }
+            }
+            .alert("Couldn't save", isPresented: formAlertPresented) {
+                Button("OK", role: .cancel) { formError = nil }
+            } message: {
+                Text(formError ?? "")
+            }
+            .sheet(isPresented: $showingIngredientPicker) {
+                IngredientPickerView { displayName, iconID in
+                    if let target = illustrationTargetID,
+                       let index = ingredients.firstIndex(where: { $0.id == target }) {
+                        ingredients[index].iconID = iconID
+                        if ingredients[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            ingredients[index].text = displayName
+                        }
+                    } else {
+                        ingredients.append(EditableLine(text: displayName, iconID: iconID))
+                    }
+                    illustrationTargetID = nil
+                    if coverIconID.isEmpty || coverIconID == "veggie_plate" {
+                        coverIconID = iconID
+                    }
+                }
+            }
+            .sheet(isPresented: viewerPresented) {
+                PhotoViewerView(photos: viewerData ?? [], selectedIndex: viewerIndex)
             }
         }
         .preferredColorScheme(.dark)
     }
-    
-    private func removeIngredient(at index: Int) {
-        ingredients.remove(at: index)
-    }
-    
-    private func removeInstruction(at index: Int) {
-        instructions.remove(at: index)
-    }
-    
-    private func saveRecipe() {
-        let filteredIngredients = ingredients.filter { !$0.isEmpty }
-        let filteredInstructions = instructions.filter { !$0.isEmpty }
-        
-        let recipe = Recipe(
-            name: name,
-            ingredients: filteredIngredients,
-            instructions: filteredInstructions,
-            prepTime: prepTime,
-            cookTime: cookTime
-        )
-        
-        recipeManager.addRecipe(recipe)
-        dismiss()
-    }
-}
 
-struct TimeInputView: View {
-    let title: String
-    @Binding var value: Int
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
-            Text(title)
-                .font(AppTheme.body)
-                .foregroundColor(AppTheme.primaryText)
-            
-            HStack {
-                Button(action: { if value > 0 { value -= 5 } }) {
-                    Image(systemName: "minus.circle")
-                        .foregroundColor(AppTheme.secondaryBrown)
-                }
-                .disabled(value <= 0)
-                
-                Text("\(value) min")
-                    .font(AppTheme.body)
-                    .foregroundColor(AppTheme.primaryText)
-                    .frame(width: 60, alignment: .center)
-                
-                Button(action: { value += 5 }) {
-                    Image(systemName: "plus.circle")
-                        .foregroundColor(AppTheme.secondaryBrown)
+    private var coverPreviewElements: [String] {
+        let dish: Set<RecipeCategory> = [.dinner, .dessert, .snack]
+        if dish.contains(category),
+           coverIconID == category.preferredCoverIconID || coverIconID == "veggie_plate" {
+            return category.coverElements
+        }
+        return [coverIconID]
+    }
+
+    private var coverPicker: some View {
+        HStack(spacing: 16) {
+            FoodIconView(iconIDs: coverPreviewElements, size: 88)
+                .padding(8)
+                .background(AppTheme.parchment)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Cover illustration")
+                    .font(AppTheme.headline)
+                    .foregroundStyle(AppTheme.primaryText)
+                Text("Uses your first illustrated ingredient, or pick a category vibe below.")
+                    .font(AppTheme.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+        }
+        .sectionSurface()
+    }
+
+    private var categoryPicker: some View {
+        RecipeFormSection(title: "Category") {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(RecipeCategory.allCases) { item in
+                        ColorChip(title: item.title, selected: category == item) {
+                            category = item
+                            coverIconID = item.preferredCoverIconID
+                            usesCategoryCover = true
+                        }
+                    }
                 }
             }
-            .padding(.horizontal, AppTheme.paddingSmall)
-            .padding(.vertical, AppTheme.paddingSmall)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cornerRadiusSmall)
+        }
+    }
+
+    private var formAlertPresented: Binding<Bool> {
+        Binding(get: { formError != nil }, set: { if !$0 { formError = nil } })
+    }
+
+    private var viewerPresented: Binding<Bool> {
+        Binding(get: { viewerData != nil }, set: { if !$0 { viewerData = nil } })
+    }
+
+    private var photoSection: some View {
+        RecipeFormSection(title: "Photos") {
+            HStack {
+                Text("\(photos.count) of \(RecipeInputLimits.photoCount)")
+                    .font(AppTheme.smallCaption)
+                    .foregroundStyle(AppTheme.tertiaryText)
+                Spacer()
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    Label("Add Photo", systemImage: "plus.circle.fill")
+                        .font(AppTheme.caption.weight(.semibold))
+                        .foregroundStyle(photos.count >= RecipeInputLimits.photoCount ? AppTheme.tertiaryText : AppTheme.burntOrange)
+                        .frame(minHeight: 44)
+                }
+                .disabled(photos.count >= RecipeInputLimits.photoCount)
+                .onChange(of: selectedPhotoItem) { _, newItem in
+                    guard let newItem else { return }
+                    Task { await addPhoto(newItem) }
+                }
+            }
+
+            if photos.isEmpty {
+                Text("Optional dish photos")
+                    .font(AppTheme.body)
+                    .foregroundStyle(AppTheme.tertiaryText)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12)], spacing: 12) {
+                    ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+                        ZStack(alignment: .topTrailing) {
+                            Button {
+                                viewerIndex = index
+                                viewerData = photos.map(\.stored.imageData)
+                            } label: {
+                                if let image = photo.thumbnail {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 100, height: 100)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                photos.removeAll { $0.id == photo.id }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(AppTheme.error)
+                                    .background(Circle().fill(AppTheme.elevatedHighlight))
+                                    .frame(width: 44, height: 44)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func addPhoto(_ item: PhotosPickerItem) async {
+        defer { selectedPhotoItem = nil }
+        guard photos.count < RecipeInputLimits.photoCount else { return }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let stored = PhotoProcessing.makeStoredPhoto(from: data) else {
+            formError = "That photo couldn't be read. Try a different one."
+            return
+        }
+        photos.append(PendingPhoto(stored: stored))
+    }
+
+    private func saveRecipe() {
+        let draft = RecipeSanitizer.clean(
+            RecipeDraft(
+                name: name,
+                ingredients: ingredients.map(\.text),
+                instructions: instructions.map(\.text),
+                notes: notes,
+                source: source
+            )
+        )
+        guard !draft.name.isEmpty else { return }
+
+        let icons: [String] = {
+            var mapped = ingredients.map(\.iconID)
+            while mapped.count < draft.ingredients.count { mapped.append("") }
+            return Array(mapped.prefix(draft.ingredients.count))
+        }()
+
+        let recipe = Recipe(
+            name: draft.name,
+            ingredients: draft.ingredients,
+            instructions: draft.instructions,
+            notes: draft.notes,
+            source: draft.source,
+            prepTime: RecipeSanitizer.minutes(prepTime),
+            cookTime: RecipeSanitizer.minutes(cookTime),
+            servings: RecipeSanitizer.servings(servings),
+            categoryRaw: category.rawValue,
+            ingredientIconIDs: icons,
+            coverIconID: coverIconID,
+            usesCategoryCover: usesCategoryCover
+        )
+        modelContext.insert(recipe)
+        for (index, photo) in photos.prefix(RecipeInputLimits.photoCount).enumerated() {
+            let stored = RecipePhoto(
+                sortIndex: index,
+                imageData: photo.stored.imageData,
+                thumbnailData: photo.stored.thumbnailData
+            )
+            stored.recipe = recipe
+            modelContext.insert(stored)
+        }
+
+        do {
+            try modelContext.save()
+            NotificationManager.shared.markUserAsActive()
+            dismiss()
+        } catch {
+            formError = "The recipe couldn't be saved. Try again."
         }
     }
 }
 
-struct CustomTextFieldStyle: TextFieldStyle {
-    func _body(configuration: TextField<Self._Label>) -> some View {
-        configuration
-            .padding(AppTheme.paddingMedium)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cornerRadiusSmall)
-            .foregroundColor(AppTheme.primaryText)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall)
-                    .stroke(AppTheme.surfaceBackground, lineWidth: 1)
-            )
-    }
+struct PendingPhoto: Identifiable {
+    let id = UUID()
+    let stored: StoredPhoto
+    var thumbnail: UIImage? { UIImage(data: stored.thumbnailData) }
 }
 
 #Preview {
     AddRecipeView()
-        .environmentObject(RecipeManager())
+        .modelContainer(PersistenceController.preview)
 }

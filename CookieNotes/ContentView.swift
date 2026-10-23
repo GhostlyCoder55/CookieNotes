@@ -2,53 +2,100 @@
 //  ContentView.swift
 //  CookieNotes
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
+import SwiftData
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var recipeManager = RecipeManager()
-    @StateObject private var notificationManager = NotificationManager()
-    
+    var storageWarning: String?
+
+    @ObservedObject private var notificationManager = NotificationManager.shared
+    @StateObject private var tutorialManager = TutorialManager()
+    @ObservedObject private var ads = AdMobController.shared
+    @ObservedObject private var imports = ImportCoordinator.shared
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var selectedTab = 0
+
     var body: some View {
-        ZStack {
-            TabView {
-                RecipeListView()
-                    .environmentObject(recipeManager)
-                    .tabItem {
-                        Image(systemName: "book.closed")
-                        Text("Recipes")
-                    }
-                
-                SearchView()
-                    .environmentObject(recipeManager)
-                    .tabItem {
-                        Image(systemName: "magnifyingglass")
-                        Text("Search")
-                    }
-                
-                AboutView()
-                    .tabItem {
-                        Image(systemName: "info.circle")
-                        Text("About")
-                    }
+        Group {
+            if tutorialManager.shouldShowFirstRunTips {
+                // First launch only — full-screen tips before the tab UI appears.
+                TutorialView(tutorialManager: tutorialManager, isPresented: .constant(true))
+                    .transition(.opacity)
+            } else {
+                mainInterface
+                    .transition(.opacity)
             }
-            .accentColor(AppTheme.secondaryBrown)
+        }
+        .animation(.easeInOut(duration: 0.3), value: tutorialManager.hasCompletedTutorial)
+    }
+
+    private var mainInterface: some View {
+        ZStack {
+            TabView(selection: $selectedTab) {
+                RecipeListView(
+                    adsActive: adsAreUnobstructed && selectedTab == 0,
+                    storageWarning: storageWarning
+                )
+                .tabItem {
+                    Label("Library", systemImage: "book.closed.fill")
+                }
+                .tag(0)
+
+                DiscoverView()
+                    .tabItem {
+                        Label("Discover", systemImage: "globe")
+                    }
+                    .tag(1)
+
+                AboutView(adsActive: adsAreUnobstructed && selectedTab == 2)
+                    .tabItem {
+                        Label("About", systemImage: "info.circle.fill")
+                    }
+                    .tag(2)
+            }
+            .tint(AppTheme.burntOrange)
+            .toolbarBackground(AppTheme.background, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
             .preferredColorScheme(.dark)
-            
-            // Login prompt overlay
-            LoginPromptOverlay(notificationManager: notificationManager)
+
+            LoginPromptOverlay()
+
+            if ads.presentTrackingExplainer {
+                TrackingExplainerView {
+                    ads.finishTrackingExplainer()
+                }
+                .transition(.opacity)
+                .zIndex(2)
+            }
         }
-        .onAppear {
-            // Mark user as active when they open the app
-            notificationManager.markUserAsActive()
-            // Connect the managers
-            recipeManager.setNotificationManager(notificationManager)
+        .environmentObject(tutorialManager)
+        .task {
+            imports.consumePendingImports(context: modelContext)
+            await ads.prepareForAdvertising()
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                imports.consumePendingImports(context: modelContext)
+                notificationManager.scheduleInactivityReminder()
+            }
+        }
+        .sheet(isPresented: $ads.presentPrivacySheet, onDismiss: {
+            Task { await ads.finishPrivacySheet() }
+        }) {
+            PrivacyChoicesView(ads: ads)
+        }
+    }
+
+    private var adsAreUnobstructed: Bool {
+        !notificationManager.shouldShowLoginPrompt
+            && !ads.presentPrivacySheet
+            && !ads.presentTrackingExplainer
     }
 }
 
 #Preview {
     ContentView()
+        .modelContainer(PersistenceController.preview)
 }

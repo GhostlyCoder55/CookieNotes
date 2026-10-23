@@ -2,181 +2,185 @@
 //  SearchView.swift
 //  CookieNotes
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
+import SwiftData
 import SwiftUI
 
 struct SearchView: View {
-    @EnvironmentObject var recipeManager: RecipeManager
+    var adsActive: Bool
+
+    @Query(sort: \Recipe.dateCreated, order: .reverse) private var recipes: [Recipe]
+    @ObservedObject private var ads = AdMobController.shared
     @State private var searchText = ""
-    @State private var selectedRecipe: Recipe?
-    
-    var filteredRecipes: [Recipe] {
-        if searchText.isEmpty {
-            return recipeManager.recipes
-        }
-        
-        return recipeManager.recipes.filter { recipe in
-            recipe.name.localizedCaseInsensitiveContains(searchText) ||
-            recipe.ingredients.contains { $0.localizedCaseInsensitiveContains(searchText) }
-        }
+    @State private var path = NavigationPath()
+
+    private var trimmedQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
+
+    private var results: [Recipe] {
+        guard !trimmedQuery.isEmpty else { return [] }
+        return RecipeLibrary.prepare(recipes, query: trimmedQuery)
+    }
+
+    private var showAds: Bool {
+        adsActive && path.isEmpty && ads.canPresentAds && !results.isEmpty
+    }
+
+    private var slots: [AdSlot] {
+        AdPlacement.searchSlots(itemCount: results.count, adsEnabled: showAds && !results.isEmpty)
+    }
+
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $path) {
             ZStack {
-                AppTheme.background
-                    .ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Search Header
-                    VStack(spacing: AppTheme.paddingMedium) {
-                        // Search Bar
-                        HStack {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(AppTheme.tertiaryText)
-                            
-                            TextField("Search recipes...", text: $searchText)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .foregroundColor(AppTheme.primaryText)
-                                .font(AppTheme.body)
-                            
-                            if !searchText.isEmpty {
-                                Button(action: { searchText = "" }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(AppTheme.tertiaryText)
-                                }
-                            }
-                        }
-                        .padding(AppTheme.paddingMedium)
-                        .background(AppTheme.cardBackground)
-                        .cornerRadius(AppTheme.cornerRadiusMedium)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium)
-                                .stroke(AppTheme.surfaceBackground, lineWidth: 1)
-                        )
-                    }
-                    .padding(.horizontal, AppTheme.paddingMedium)
-                    .padding(.top, AppTheme.paddingSmall)
-                    
-                    // Results
-                    if filteredRecipes.isEmpty {
-                        EmptySearchView(searchText: searchText)
-                    } else {
-                        ScrollView {
-                            LazyVStack(spacing: AppTheme.paddingMedium) {
-                                ForEach(filteredRecipes) { recipe in
-                                    SearchResultCard(recipe: recipe) {
-                                        selectedRecipe = recipe
+                AppTheme.background.ignoresSafeArea()
+
+                if results.isEmpty {
+                    EmptySearchView(searchText: searchText, libraryIsEmpty: recipes.isEmpty)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
+                                switch slot {
+                                case .item(let index):
+                                    let recipe = results[index]
+                                    NavigationLink(value: recipe.recipeID) {
+                                        SearchResultRow(recipe: recipe)
                                     }
-                                    .transition(.opacity)
+                                    .buttonStyle(.plain)
+
+                                    if shouldShowDivider(after: index, slots: slots) {
+                                        Divider()
+                                            .background(AppTheme.separator.opacity(0.45))
+                                            .padding(.leading, 72)
+                                    }
+                                case .advertisement:
+                                    AdvertisementSlot(placementID: "search")
+                                        .padding(.vertical, AppTheme.paddingMedium)
                                 }
                             }
-                            .padding(.horizontal, AppTheme.paddingMedium)
-                            .padding(.top, AppTheme.paddingMedium)
                         }
+                        .padding(.horizontal, AppTheme.paddingMedium)
+                        .padding(.vertical, AppTheme.paddingSmall)
+                        .frame(maxWidth: 800)
+                        .frame(maxWidth: .infinity)
                     }
+                    .scrollDismissesKeyboard(.interactively)
                 }
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
-            .sheet(item: $selectedRecipe) { recipe in
-                RecipeDetailView(recipe: recipe)
-                    .environmentObject(recipeManager)
+            .toolbarBackground(AppTheme.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Recipes, ingredients, notes"
+            )
+            .navigationDestination(for: UUID.self) { recipeID in
+                if let recipe = recipes.first(where: { $0.recipeID == recipeID }) {
+                    RecipeDetailView(recipe: recipe)
+                } else {
+                    MissingRecipeView()
+                }
             }
         }
         .preferredColorScheme(.dark)
     }
+
+    private func shouldShowDivider(after index: Int, slots: [AdSlot]) -> Bool {
+        guard let currentOffset = slots.firstIndex(where: {
+            if case .item(let i) = $0 { return i == index }
+            return false
+        }) else { return false }
+        let next = currentOffset + 1
+        guard next < slots.count else { return false }
+        if case .item = slots[next] { return true }
+        return false
+    }
 }
 
-struct SearchResultCard: View {
+struct SearchResultRow: View {
     let recipe: Recipe
-    let onTap: () -> Void
-    
+
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: AppTheme.paddingMedium) {
-                // Recipe Icon
-                Image(systemName: "fork.knife")
-                    .font(.title2)
-                    .foregroundColor(AppTheme.secondaryBrown)
-                    .frame(width: 40, height: 40)
-                    .background(AppTheme.surfaceBackground)
-                    .cornerRadius(AppTheme.cornerRadiusSmall)
-                
-                // Recipe Info
-                VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
-                    Text(recipe.name)
-                        .font(AppTheme.headline)
-                        .foregroundColor(AppTheme.primaryText)
-                        .lineLimit(1)
-                        .multilineTextAlignment(.leading)
-                    
-                    HStack {
-                        Text(recipe.formattedTotalTime)
-                            .font(AppTheme.caption)
-                            .foregroundColor(AppTheme.tertiaryText)
-                        
-                        if !recipe.ingredients.isEmpty {
-                            Text("•")
-                                .font(AppTheme.caption)
-                                .foregroundColor(AppTheme.tertiaryText)
-                            
-                            Text("\(recipe.ingredients.count) ingredients")
-                                .font(AppTheme.caption)
-                                .foregroundColor(AppTheme.tertiaryText)
-                        }
-                    }
-                    
-                }
-                
-                Spacer()
-                
-                // Arrow
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(AppTheme.tertiaryText)
-            }
-            .padding(AppTheme.paddingMedium)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(AppTheme.cornerRadiusMedium)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium)
-                    .stroke(AppTheme.surfaceBackground, lineWidth: 1)
+        HStack(spacing: AppTheme.paddingMedium) {
+            RecipeThumbnail(
+                data: recipe.cardThumbnail,
+                iconID: recipe.resolvedCoverIcon,
+                iconIDs: recipe.resolvedCoverElements
             )
-            .shadow(color: AppTheme.cardShadow, radius: 2, x: 0, y: 1)
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recipe.name)
+                    .font(AppTheme.headline)
+                    .foregroundStyle(AppTheme.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    Text(recipe.formattedTotalTime)
+                        .foregroundStyle(AppTheme.accentYellow)
+                    if !recipe.ingredients.isEmpty {
+                        Text("·")
+                            .foregroundStyle(AppTheme.tertiaryText)
+                        Text("\(recipe.ingredients.count) ingredients")
+                            .foregroundStyle(AppTheme.tertiaryText)
+                    }
+                }
+                .font(AppTheme.smallCaption)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.tertiaryText.opacity(0.7))
+                .accessibilityHidden(true)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(recipe.accessibilitySummary)
+        .accessibilityHint("Opens the recipe")
     }
 }
 
 struct EmptySearchView: View {
     let searchText: String
-    
+    let libraryIsEmpty: Bool
+
     var body: some View {
-        VStack(spacing: AppTheme.paddingLarge) {
-            Image(systemName: searchText.isEmpty ? "magnifyingglass" : "exclamationmark.triangle")
-                .font(.system(size: 60))
-                .foregroundColor(AppTheme.secondaryBrown)
-            
-            Text(searchText.isEmpty ? "Search Your Recipes" : "No Results Found")
-                .font(AppTheme.title)
-                .foregroundColor(AppTheme.primaryText)
-            
-            Text(searchText.isEmpty ? 
-                 "Use the search bar above to find recipes by name, ingredients, or notes." :
-                 "Try searching with different keywords or check your spelling.")
-                .font(AppTheme.body)
-                .foregroundColor(AppTheme.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, AppTheme.paddingLarge)
+        EmptyState(
+            systemImage: searchText.isEmpty ? "magnifyingglass" : "text.magnifyingglass",
+            title: title,
+            message: message
+        )
+        .padding(AppTheme.paddingLarge)
+    }
+
+    private var title: String {
+        if libraryIsEmpty { return "No Recipes Yet" }
+        return searchText.isEmpty ? "Search Your Library" : "No Results"
+    }
+
+    private var message: String {
+        if libraryIsEmpty {
+            return "Recipes you add will show up here. Search looks through names, ingredients, steps, and notes."
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if searchText.isEmpty {
+            return "Find a recipe by its name, an ingredient, a step, or a note."
+        }
+        return "Try a different word, or check the spelling."
     }
 }
 
 #Preview {
-    SearchView()
-        .environmentObject(RecipeManager())
+    SearchView(adsActive: false)
+        .modelContainer(PersistenceController.preview)
+        .preferredColorScheme(.dark)
 }

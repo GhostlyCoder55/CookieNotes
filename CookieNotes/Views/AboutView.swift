@@ -2,105 +2,100 @@
 //  AboutView.swift
 //  CookieNotes
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
 import SwiftUI
 
 struct AboutView: View {
-    var body: some View {
-        NavigationView {
-            ZStack {
-                AppTheme.background
-                    .ignoresSafeArea()
-                
-                ScrollView {
-                    
-                    VStack(spacing: AppTheme.paddingLarge) {
-                        // Header
-                        VStack(spacing: AppTheme.paddingMedium) {
-                            Text("Your Personal Cooking Journal")
-                                .font(AppTheme.headline)
-                                .foregroundColor(AppTheme.secondaryText)
-                        }
-                        .padding(.top, AppTheme.paddingLarge)
-                        
-                        // Note Cards
-                        VStack(spacing: AppTheme.paddingMedium) {
-                            NoteCard(
-                                title: "What is CookieNotes?",
-                                content: "CookieNotes is your digital recipe collection. A modern space where you can save, organize, and treasure your personal recipes. Think of it as your personal cooking journal that's always with you."
-                            )
-                            
-                            NoteCard(
-                                title: "Why I Built This",
-                                content: "Christopher Ogbonnaya wanted to create something that feels like flipping through a digital cookbook. Every recipe tells a story, and CookieNotes helps you preserve those stories."
-                            )
-                            
-                            NoteCard(
-                                title: "Features",
-                                content: "• Add and edit your personal recipes\n• Search by name, ingredients, or notes\n• Organize with prep and cook times\n• Add special notes and tips\n• Beautiful, minimal interface\n• Smooth animations and transitions"
-                            )
+    var adsActive: Bool
+    @EnvironmentObject private var tutorialManager: TutorialManager
+    @ObservedObject private var ads = AdMobController.shared
 
-                            
-                            NoteCard(
-                                title: "Tips for Getting Started",
-                                content: "• Start by adding your favorite family recipes\n• Use the notes section for special tips and memories\n• Search is your friend - find recipes quickly\n• Edit mode lets you update recipes anytime\n• The app remembers everything automatically"
-                            )
-                            
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppTheme.background.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
+                        HStack(spacing: 14) {
+                            Image("AppLogo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 64, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("CookieNotes")
+                                    .font(AppTheme.title)
+                                    .foregroundStyle(AppTheme.primaryText)
+                                Text("Your personal cooking library")
+                                    .font(AppTheme.caption)
+                                    .foregroundStyle(AppTheme.secondaryText)
+                            }
                         }
-                        .padding(.horizontal, AppTheme.paddingMedium)
-                        
-                        // Footer
-                        VStack(spacing: AppTheme.paddingSmall) {
-                            // Empty footer
+
+                        aboutBlock(
+                            title: "Library",
+                            body: "Keep personal recipes with photos, illustrated ingredients, favorites, and cook mode."
+                        )
+                        aboutBlock(
+                            title: "Discover",
+                            body: "Search online recipes from TheMealDB, preview them, and save keepers into your journal with attribution."
+                        )
+                        aboutBlock(
+                            title: "Privacy and ads",
+                            body: "Recipes stay on this device. Ads help keep CookieNotes free."
+                        )
+
+                        HStack(spacing: AppTheme.paddingSmall) {
+                            Button {
+                                ads.privacySheetMode = .settings
+                                ads.presentPrivacySheet = true
+                            } label: {
+                                Text("Ads")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+
+                            Button {
+                                tutorialManager.resetTutorial()
+                            } label: {
+                                Text("Show tips")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
                         }
-                        .padding(.top, AppTheme.paddingLarge)
-                        .padding(.bottom, AppTheme.paddingXLarge)
+
+                        if adsActive && ads.canPresentAds {
+                            AdvertisementSlot(placementID: "about")
+                        }
+
+                        Text("Created by Christopher Ogbonnaya")
+                            .font(AppTheme.caption)
+                            .foregroundStyle(AppTheme.tertiaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.bottom, AppTheme.paddingXLarge)
                     }
+                    .padding(AppTheme.paddingMedium)
                 }
             }
             .navigationTitle("About")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("About")
-                        .font(AppTheme.largeTitle)
-                        .foregroundColor(AppTheme.primaryText)
-                }
-            }
         }
         .preferredColorScheme(.dark)
     }
-}
 
-struct NoteCard: View {
-    let title: String
-    let content: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
+    private func aboutBlock(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(AppTheme.headline)
-                .foregroundColor(AppTheme.primaryText)
-            
-            Text(content)
+                .font(AppTheme.sectionLabel)
+                .foregroundStyle(AppTheme.accent)
+            Text(body)
                 .font(AppTheme.body)
-                .foregroundColor(AppTheme.secondaryText)
-                .lineSpacing(4)
+                .foregroundStyle(AppTheme.primaryText)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(AppTheme.paddingMedium)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(AppTheme.cornerRadiusMedium)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium)
-                .stroke(AppTheme.surfaceBackground, lineWidth: 1)
-        )
-        .shadow(color: AppTheme.cardShadow, radius: 4, x: 0, y: 2)
+        .sectionSurface()
     }
 }
 
 #Preview {
-    AboutView()
+    AboutView(adsActive: false)
+        .environmentObject(TutorialManager())
 }

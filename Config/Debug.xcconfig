@@ -1,0 +1,8 @@
+// Debug builds request Google's official sample ads. They do not earn revenue.
+// https://developers.google.com/admob/ios/test-ads
+GAD_APPLICATION_IDENTIFIER = ca-app-pub-3940256099942544~1458002511
+COOKIENOTES_BANNER_AD_UNIT_ID = ca-app-pub-3940256099942544/2435281174
+COOKIENOTES_PRIVACY_POLICY_URL =
+COOKIENOTES_CLOUDKIT_ENABLED = NO
+// TheMealDB test key for development. Replace with a supporter key before App Store release.
+COOKIENOTES_MEALDB_API_KEY = 1

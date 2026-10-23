@@ -1,0 +1,12 @@
+// Ads stay off until both IDs are real AdMob values for this app.
+// Do not paste Google's sample IDs as a production ad unit.
+// The sample application ID below is only a valid-format placeholder so the Google
+// Mobile Ads SDK can load when COOKIENOTES_BANNER_AD_UNIT_ID is blank. CookieNotes
+// will not request ads until a matching production banner ID is also set.
+// Set COOKIENOTES_PRIVACY_POLICY_URL to the public https page you enter in AdMob.
+// Set COOKIENOTES_CLOUDKIT_ENABLED to YES only after the iCloud capability is on the App ID.
+GAD_APPLICATION_IDENTIFIER = ca-app-pub-3940256099942544~1458002511
+COOKIENOTES_BANNER_AD_UNIT_ID =
+COOKIENOTES_PRIVACY_POLICY_URL =
+COOKIENOTES_CLOUDKIT_ENABLED = NO
+COOKIENOTES_MEALDB_API_KEY =

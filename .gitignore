@@ -1,0 +1,7 @@
+.derived/
+.build-home/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+*.xcresult
+DerivedData/

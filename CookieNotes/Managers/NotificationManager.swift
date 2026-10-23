@@ -2,88 +2,112 @@
 //  NotificationManager.swift
 //  CookieNotes
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
 import Foundation
-import UserNotifications
 import SwiftUI
+import UserNotifications
 
 class NotificationManager: ObservableObject {
+    static let shared = NotificationManager()
+
     @Published var shouldShowLoginPrompt = false
     @Published var lastLoginDate: Date?
-    
+
     private let userDefaults = UserDefaults.standard
     private let lastLoginKey = "last_login_date"
-    private let notificationInterval: TimeInterval = 7 * 24 * 60 * 60 // 7 days in seconds
-    
-    init() {
+    private let clearedLegacyNotificationsKey = "cookienotes.didClearLegacyNotifications"
+    private let reminderID = "cookienotes.inactivityReminder"
+    /// In-app welcome prompt after a week away.
+    static let promptInterval: TimeInterval = 7 * 24 * 60 * 60
+    /// Local notification if the app has not been opened for a while.
+    static let reminderInterval: TimeInterval = 5 * 24 * 60 * 60
+
+    private init() {
         loadLastLoginDate()
-        checkIfShouldShowPrompt()
-        requestNotificationPermission()
+        if lastLoginDate == nil {
+            lastLoginDate = Date()
+            saveLastLoginDate()
+        }
+        if LaunchOptions.skipWelcome {
+            shouldShowLoginPrompt = false
+            lastLoginDate = Date()
+            saveLastLoginDate()
+        } else if Self.shouldPrompt(lastLogin: lastLoginDate, now: Date(), interval: Self.promptInterval) {
+            shouldShowLoginPrompt = true
+        } else {
+            lastLoginDate = Date()
+            saveLastLoginDate()
+        }
+        clearLegacyNotificationsIfNeeded()
+        scheduleInactivityReminder()
     }
-    
+
+    static func shouldPrompt(lastLogin: Date?, now: Date, interval: TimeInterval) -> Bool {
+        guard let lastLogin else { return false }
+        return now.timeIntervalSince(lastLogin) >= interval
+    }
+
     func markUserAsActive() {
         lastLoginDate = Date()
         saveLastLoginDate()
         shouldShowLoginPrompt = false
-        scheduleNextNotification()
+        scheduleInactivityReminder()
     }
-    
-    func checkIfShouldShowPrompt() {
-        guard let lastLogin = lastLoginDate else {
-            // First time user - don't show prompt immediately
-            return
-        }
-        
-        let timeSinceLastLogin = Date().timeIntervalSince(lastLogin)
-        if timeSinceLastLogin >= notificationInterval {
-            shouldShowLoginPrompt = true
+
+    func dismissPrompt() {
+        shouldShowLoginPrompt = false
+        scheduleInactivityReminder()
+    }
+
+    /// Asks for permission once, then schedules a single quiet reminder for later.
+    func scheduleInactivityReminder() {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                    guard granted else { return }
+                    self.enqueueReminder(on: center)
+                }
+            case .authorized, .provisional, .ephemeral:
+                self.enqueueReminder(on: center)
+            default:
+                break
+            }
         }
     }
-    
+
+    private func enqueueReminder(on center: UNUserNotificationCenter) {
+        center.removePendingNotificationRequests(withIdentifiers: [reminderID])
+
+        let content = UNMutableNotificationContent()
+        content.title = "CookieNotes"
+        content.body = "Your cookbook is waiting. Open CookieNotes when you are ready to cook."
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: Self.reminderInterval,
+            repeats: false
+        )
+        let request = UNNotificationRequest(identifier: reminderID, content: content, trigger: trigger)
+        center.add(request)
+    }
+
+    private func clearLegacyNotificationsIfNeeded() {
+        guard !userDefaults.bool(forKey: clearedLegacyNotificationsKey) else { return }
+        let center = UNUserNotificationCenter.current()
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        userDefaults.set(true, forKey: clearedLegacyNotificationsKey)
+    }
+
     private func loadLastLoginDate() {
-        if let savedDate = userDefaults.object(forKey: lastLoginKey) as? Date {
-            lastLoginDate = savedDate
-        }
+        lastLoginDate = userDefaults.object(forKey: lastLoginKey) as? Date
     }
-    
+
     private func saveLastLoginDate() {
         if let date = lastLoginDate {
             userDefaults.set(date, forKey: lastLoginKey)
         }
-    }
-    
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if granted {
-                self.scheduleNextNotification()
-            }
-        }
-    }
-    
-    private func scheduleNextNotification() {
-        // Cancel existing notifications
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-        
-        // Schedule notification for next week
-        let content = UNMutableNotificationContent()
-        content.title = "Missing Your Recipes?"
-        content.body = "Come back to CookieNotes and add some delicious recipes to your collection!"
-        content.sound = .default
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: notificationInterval, repeats: false)
-        let request = UNNotificationRequest(identifier: "login_prompt", content: content, trigger: trigger)
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error scheduling notification: \(error)")
-            }
-        }
-    }
-    
-    func dismissPrompt() {
-        shouldShowLoginPrompt = false
-        // Don't update lastLoginDate - user dismissed without being active
     }
 }

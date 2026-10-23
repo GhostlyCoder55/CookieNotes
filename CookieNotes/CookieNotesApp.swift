@@ -2,34 +2,50 @@
 //  CookieNotesApp.swift
 //  CookieNotes
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
 import SwiftUI
+import SwiftData
 
 @main
 struct CookieNotesApp: App {
-    @State private var showLaunchScreen = true
-    
+    private let container: ModelContainer
+    private let storageWarning: String?
+
+    init() {
+        AppBadge.clear()
+        let boot = Self.bootstrap()
+        container = boot.container
+        storageWarning = boot.warning
+    }
+
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                if showLaunchScreen {
-                    LaunchScreenView()
-                        .transition(.opacity)
-                } else {
-                    ContentView()
-                        .preferredColorScheme(.dark)
-                }
+            // System `LaunchScreen.storyboard` is the only splash.
+            // First launch → tips once; later launches → library.
+            ContentView(storageWarning: storageWarning)
+                .modelContainer(container)
+                .preferredColorScheme(.dark)
+                .onAppear { InterfaceStyle.forceDark() }
+        }
+    }
+
+    @MainActor
+    private static func bootstrap() -> (container: ModelContainer, warning: String?) {
+        do {
+            let container = try PersistenceController.makeContainer()
+            let context = ModelContext(container)
+            context.autosaveEnabled = false
+            do {
+                try PersistenceController.prepareLibrary(context: context)
+            } catch {
+                return (container, PersistenceController.lastErrorMessage)
             }
-            .onAppear {
-                // Show launch screen for 2.5 seconds then transition to main app
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    withAnimation(.easeInOut(duration: 0.5)) {
-                        showLaunchScreen = false
-                    }
-                }
-            }
+            return (container, PersistenceController.lastErrorMessage)
+        } catch {
+            return (
+                PersistenceController.makeFallbackContainer(),
+                "Recipes couldn't be opened. You can keep using CookieNotes, but new changes may not be saved."
+            )
         }
     }
 }

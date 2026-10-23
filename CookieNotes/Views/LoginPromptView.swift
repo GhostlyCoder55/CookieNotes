@@ -2,111 +2,73 @@
 //  LoginPromptView.swift
 //  CookieNotes
 //
-//  Created by Christopher Ogbonnaya on 2025-10-26.
-//
 
 import SwiftUI
 
-struct LoginPromptView: View {
+struct WelcomeBackPromptView: View {
     @ObservedObject var notificationManager: NotificationManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAnimating = false
-    
+
     var body: some View {
         VStack(spacing: AppTheme.paddingLarge) {
-            // Icon
-            Image(systemName: "heart.fill")
-                .font(.system(size: 50))
-                .foregroundColor(AppTheme.secondaryBrown)
-                .scaleEffect(isAnimating ? 1.1 : 1.0)
-                .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
-            
-            // Title
-            Text("Welcome Back!")
-                .font(AppTheme.largeTitle)
-                .foregroundColor(AppTheme.primaryText)
-                .multilineTextAlignment(.center)
-            
-            // Message
-            Text("We've missed you! Your recipe collection is waiting for you. Add some new recipes or revisit your favorites.")
+            FoodIconView(iconID: "cupcake", size: 80)
+                .scaleEffect(!reduceMotion && isAnimating ? 1.05 : 1)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 1).repeatForever(autoreverses: true), value: isAnimating)
+
+            Text("Welcome Back")
+                .font(AppTheme.title)
+                .foregroundStyle(AppTheme.primaryText)
+
+            Text("Your recipes are waiting. Add something new, discover online, or open a favorite.")
                 .font(AppTheme.body)
-                .foregroundColor(AppTheme.secondaryText)
+                .foregroundStyle(AppTheme.secondaryText)
                 .multilineTextAlignment(.center)
-                .lineSpacing(4)
-            
-            // Time since last visit
+
             if let lastLogin = notificationManager.lastLoginDate {
                 Text("Last visit: \(lastLogin, style: .date)")
                     .font(AppTheme.caption)
-                    .foregroundColor(AppTheme.tertiaryText)
+                    .foregroundStyle(AppTheme.tertiaryText)
             }
-            
-            // Buttons
-            VStack(spacing: AppTheme.paddingMedium) {
-                Button(action: {
-                    notificationManager.markUserAsActive()
-                }) {
-                    HStack {
-                        Image(systemName: "cookpot.fill")
-                        Text("Start Cooking")
-                    }
-                    .font(AppTheme.headline)
-                    .foregroundColor(AppTheme.primaryText)
+
+            Button {
+                notificationManager.markUserAsActive()
+            } label: {
+                Label("Start Cooking", systemImage: "fork.knife")
                     .frame(maxWidth: .infinity)
-                    .padding(AppTheme.paddingMedium)
-                    .background(AppTheme.secondaryBrown)
-                    .cornerRadius(AppTheme.cornerRadiusMedium)
-                }
-                .buttonStyle(PlainButtonStyle())
-                
-                Button(action: {
-                    notificationManager.dismissPrompt()
-                }) {
-                    Text("Maybe Later")
-                        .font(AppTheme.body)
-                        .foregroundColor(AppTheme.secondaryText)
-                        .padding(AppTheme.paddingSmall)
-                }
-                .buttonStyle(PlainButtonStyle())
             }
+            .buttonStyle(PrimaryButtonStyle())
+
+            Button("Maybe Later") {
+                notificationManager.dismissPrompt()
+            }
+            .foregroundStyle(AppTheme.secondaryText)
+            .frame(minHeight: 44)
         }
-        .padding(AppTheme.paddingXLarge)
+        .padding(AppTheme.paddingLarge)
         .background(AppTheme.cardBackground)
-        .cornerRadius(AppTheme.cornerRadiusLarge)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge)
-                .stroke(AppTheme.surfaceBackground, lineWidth: 1)
-        )
-        .shadow(color: AppTheme.cardShadow, radius: 10, x: 0, y: 5)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous))
+        .shadow(color: AppTheme.cardShadow, radius: 12, y: 6)
         .onAppear {
-            isAnimating = true
+            if !reduceMotion { isAnimating = true }
         }
     }
 }
 
+typealias LoginPromptView = WelcomeBackPromptView
+
 struct LoginPromptOverlay: View {
-    @ObservedObject var notificationManager: NotificationManager
-    
+    @ObservedObject private var notificationManager = NotificationManager.shared
+
     var body: some View {
         if notificationManager.shouldShowLoginPrompt {
             ZStack {
-                // Background overlay
-                Color.black.opacity(0.5)
+                Color.black.opacity(0.35)
                     .ignoresSafeArea()
-                    .onTapGesture {
-                        notificationManager.dismissPrompt()
-                    }
-                
-                // Login prompt
-                LoginPromptView(notificationManager: notificationManager)
-                    .padding(AppTheme.paddingLarge)
+                    .onTapGesture { notificationManager.dismissPrompt() }
+                WelcomeBackPromptView(notificationManager: notificationManager)
+                    .padding()
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: notificationManager.shouldShowLoginPrompt)
         }
     }
-}
-
-#Preview {
-    LoginPromptOverlay(notificationManager: NotificationManager())
-        .background(AppTheme.background)
 }
