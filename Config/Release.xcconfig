@@ -5,8 +5,9 @@
 // will not request ads until a matching production banner ID is also set.
 // Set COOKIENOTES_PRIVACY_POLICY_URL to the public https page you enter in AdMob.
 // Set COOKIENOTES_CLOUDKIT_ENABLED to YES only after the iCloud capability is on the App ID.
-GAD_APPLICATION_IDENTIFIER = ca-app-pub-3940256099942544~1458002511
-COOKIENOTES_BANNER_AD_UNIT_ID =
-COOKIENOTES_PRIVACY_POLICY_URL =
+GAD_APPLICATION_IDENTIFIER = ca-app-pub-8075634631393674~6513329571
+COOKIENOTES_BANNER_AD_UNIT_ID = ca-app-pub-8075634631393674/2334411416
+// xcconfig treats // as a comment — break it with an empty $(/) expansion.
+COOKIENOTES_PRIVACY_POLICY_URL = https:/$()/ghostlycoder55.github.io/CookieNotes-privacy/
 COOKIENOTES_CLOUDKIT_ENABLED = NO
 COOKIENOTES_MEALDB_API_KEY =

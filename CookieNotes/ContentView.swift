@@ -61,14 +61,6 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
 
             LoginPromptOverlay()
-
-            if ads.presentTrackingExplainer {
-                TrackingExplainerView {
-                    ads.finishTrackingExplainer()
-                }
-                .transition(.opacity)
-                .zIndex(2)
-            }
         }
         .environmentObject(tutorialManager)
         .task {
@@ -91,7 +83,6 @@ struct ContentView: View {
     private var adsAreUnobstructed: Bool {
         !notificationManager.shouldShowLoginPrompt
             && !ads.presentPrivacySheet
-            && !ads.presentTrackingExplainer
     }
 }
 

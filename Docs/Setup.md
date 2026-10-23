@@ -33,13 +33,14 @@ AdMob does not charge a fee to create an account. Google keeps a share of ad rev
 2. Copy the AdMob app ID (`ca-app-pub-…~…`).
 3. Create one banner ad unit (`ca-app-pub-…/…`). CookieNotes only requests banners.
 4. Publish a privacy policy at a public `https` address. In AdMob, open Privacy & messaging and use that same address in the GDPR, US state, and other messages you need.
-5. **Do not publish an AdMob IDFA explainer** (the white Google “Continue” card). CookieNotes shows its own dark, on-brand tracking explainer before Apple’s ATT prompt. Keep GDPR / US-state consent messages in Privacy & messaging as needed; only skip the separate IDFA message type so users are not asked twice.
+5. **Do not publish an AdMob IDFA explainer** and do not add `NSUserTrackingUsageDescription`. CookieNotes serves non-personalized banners only and never requests App Tracking Transparency. Keep GDPR / US-state consent messages in AdMob Privacy & messaging as needed.
 6. Edit `Config/Release.xcconfig`:
 
 ```
 GAD_APPLICATION_IDENTIFIER = ca-app-pub-yourid~yourapp
 COOKIENOTES_BANNER_AD_UNIT_ID = ca-app-pub-yourid/yourbanner
-COOKIENOTES_PRIVACY_POLICY_URL = https://your-site.example/privacy
+# xcconfig treats // as a comment — write https URLs like this:
+COOKIENOTES_PRIVACY_POLICY_URL = https:/$()/your-site.example/privacy
 ```
 
 Leave `COOKIENOTES_BANNER_AD_UNIT_ID` blank to ship with ads turned off. The release file may keep Google's sample application ID only as an Info.plist placeholder so the SDK can load; CookieNotes still will not request ads until both IDs are your real AdMob values and they share the same publisher prefix. Do not set a sample banner ID in Release. Debug builds ignore release IDs and always use Google's sample banner `ca-app-pub-3940256099942544/2435281174` with sample app ID `ca-app-pub-3940256099942544~1458002511`.
@@ -48,7 +49,7 @@ Do not tap your own live ads. Use a Debug run to check layout. A release build w
 
 Before you submit, replace `SKAdNetworkItems` in `Config/Info.plist` with the current list from Google's [AdMob iOS quick start](https://developers.google.com/admob/ios/quick-start). The IDs already in the file are published network identifiers. Google adds more over time, and missing ones can reduce measurement without stopping ads from loading.
 
-In App Store Connect, declare tracking and advertising data. The app asks for App Tracking Transparency only after someone chooses personalized ads, or after Google's European or US state form when that form applies. Recipes are not sent to AdMob as keywords.
+In App Store Connect, do **not** declare data used for tracking. CookieNotes does not request ATT/IDFA. Declare advertising data as needed for AdMob banners (non-personalized). Recipes are not sent to AdMob as keywords.
 
 ## Where ads appear
 

@@ -21,7 +21,6 @@ final class AdMobController: ObservableObject {
     @Published private(set) var reloadToken = UUID()
     @Published private(set) var availabilityMessage: String?
     @Published var presentPrivacySheet = false
-    @Published var presentTrackingExplainer = false
     @Published var privacySheetMode: PrivacySheetMode = .firstRun
     @Published var privacyOptionsRequired = false
 
@@ -136,11 +135,6 @@ final class AdMobController: ObservableObject {
         MobileAds.shared.start { _ in
             AppLog.ads.debug("Google Mobile Ads started")
         }
-    }
-
-    /// Kept for sheet overlay wiring; tracking permission is not used for ad choice.
-    func finishTrackingExplainer() {
-        presentTrackingExplainer = false
     }
 
     private func applyRequestConfiguration() {
