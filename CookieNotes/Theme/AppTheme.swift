@@ -192,6 +192,97 @@ extension View {
     }
 }
 
+/// Shared title + subtitle stack used across tips, empty states, and page intros.
+/// Keeps typography, spacing, and alignment consistent app-wide.
+struct TitleSubtitleBlock: View {
+    enum Style {
+        /// Onboarding / full-screen tips — large centered title.
+        case hero
+        /// In-page intros and empty states — title2 centered or leading.
+        case page
+        /// Compact brand or section intros.
+        case compact
+    }
+
+    let title: String
+    var subtitle: String = ""
+    var style: Style = .page
+    var alignment: HorizontalAlignment = .center
+    /// When true, reserves two title lines so short titles don’t shift the subtitle.
+    var reservesTitleLines: Bool = false
+
+    private var titleFont: Font {
+        switch style {
+        case .hero: return AppTheme.largeTitle
+        case .page: return AppTheme.title
+        case .compact: return AppTheme.title
+        }
+    }
+
+    private var subtitleFont: Font {
+        switch style {
+        case .hero, .page: return AppTheme.body
+        case .compact: return AppTheme.caption
+        }
+    }
+
+    private var stackSpacing: CGFloat {
+        switch style {
+        case .hero: return 10
+        case .page: return AppTheme.paddingSmall
+        case .compact: return 4
+        }
+    }
+
+    private var textAlignment: TextAlignment {
+        alignment == .leading ? .leading : .center
+    }
+
+    var body: some View {
+        VStack(alignment: alignment, spacing: stackSpacing) {
+            Text(title)
+                .font(titleFont)
+                .foregroundStyle(AppTheme.primaryText)
+                .multilineTextAlignment(textAlignment)
+                .lineLimit(reservesTitleLines ? 2 : nil)
+                .lineSpacing(2)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, alignment: frameAlignment)
+                .frame(minHeight: reservesTitleLines ? heroTitleMinHeight : nil, alignment: .center)
+
+            if !subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(subtitle)
+                    .font(subtitleFont)
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .multilineTextAlignment(textAlignment)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: subtitleMaxWidth, alignment: frameAlignment)
+                    .frame(maxWidth: .infinity, alignment: frameAlignment)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: frameAlignment)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var frameAlignment: Alignment {
+        alignment == .leading ? .leading : .center
+    }
+
+    private var subtitleMaxWidth: CGFloat {
+        switch style {
+        case .hero: return 340
+        case .page: return 360
+        case .compact: return .infinity
+        }
+    }
+
+    private var heroTitleMinHeight: CGFloat {
+        // Approximate two lines of largeTitle so every tip page shares the same title band.
+        68
+    }
+}
+
 struct EditableLine: Identifiable, Equatable {
     let id: UUID
     var text: String
@@ -231,20 +322,27 @@ struct NotesEditor: View {
             TextEditor(text: $text)
                 .font(AppTheme.body)
                 .foregroundStyle(AppTheme.primaryText)
+                .tint(AppTheme.burntOrange)
                 .scrollContentBackground(.hidden)
-                .frame(minHeight: 120)
-                .padding(.horizontal, AppTheme.paddingSmall)
-                .padding(.vertical, AppTheme.paddingSmall)
+                .frame(minHeight: 120, alignment: .topLeading)
+                // TextEditor’s built-in inset is ~5pt; keep typing top-leading like other fields.
+                .padding(.horizontal, 7)
+                .padding(.top, 0)
+                .padding(.bottom, 4)
 
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(placeholder)
                     .font(AppTheme.body)
                     .foregroundStyle(AppTheme.tertiaryText)
-                    .padding(.horizontal, AppTheme.paddingMedium + 1)
-                    .padding(.vertical, AppTheme.paddingMedium + 8)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .allowsHitTesting(false)
             }
         }
+        .padding(.horizontal, AppTheme.paddingSmall)
+        .padding(.vertical, AppTheme.paddingSmall)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous)
                 .fill(AppTheme.parchment)
@@ -348,19 +446,13 @@ struct EmptyState: View {
                     .accessibilityHidden(true)
             }
 
-            VStack(spacing: AppTheme.paddingSmall) {
-                Text(title)
-                    .font(AppTheme.title)
-                    .foregroundStyle(AppTheme.primaryText)
-                    .multilineTextAlignment(.center)
-                if !message.isEmpty {
-                    Text(message)
-                        .font(AppTheme.body)
-                        .foregroundStyle(AppTheme.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppTheme.paddingLarge)
-                }
-            }
+            TitleSubtitleBlock(
+                title: title,
+                subtitle: message,
+                style: .page,
+                alignment: .center
+            )
+            .padding(.horizontal, AppTheme.paddingLarge)
 
             if let actionTitle, let action {
                 Button(actionTitle, action: action)

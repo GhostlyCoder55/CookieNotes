@@ -27,11 +27,26 @@ enum IngredientCatalog {
     static let shared: IngredientCatalogFile = load()
 
     private static func load() -> IngredientCatalogFile {
-        if let url = Bundle.main.url(forResource: "IngredientCatalog", withExtension: "json"),
-           let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode(IngredientCatalogFile.self, from: data) {
-            return decoded
+        let urls: [URL?] = [
+            Bundle.main.url(forResource: "IngredientCatalog", withExtension: "json"),
+            Bundle.main.url(forResource: "IngredientCatalog", withExtension: "json", subdirectory: "Resources")
+        ]
+        for case let url? in urls {
+            guard let data = try? Data(contentsOf: url) else { continue }
+            do {
+                let decoded = try JSONDecoder().decode(IngredientCatalogFile.self, from: data)
+                // Drop empty categories so chips never open onto a blank grid.
+                let cleaned = IngredientCatalogFile(
+                    categories: decoded.categories.filter { !$0.icons.isEmpty },
+                    displayNames: decoded.displayNames,
+                    aliases: decoded.aliases
+                )
+                return cleaned
+            } catch {
+                assertionFailure("IngredientCatalog.json failed to decode: \(error)")
+            }
         }
+        assertionFailure("IngredientCatalog.json missing from app bundle")
         return IngredientCatalogFile(categories: [], displayNames: [:], aliases: [:])
     }
 

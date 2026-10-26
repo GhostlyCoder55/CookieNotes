@@ -1,7 +1,7 @@
 {
   "images": [
     {
-      "filename": "whole_raw_chicken.svg",
+      "filename": "whole_raw_chicken.png",
       "idiom": "universal"
     }
   ],
@@ -10,7 +10,6 @@
     "version": 1
   },
   "properties": {
-    "preserves-vector-representation": true,
     "template-rendering-intent": "original"
   }
 }

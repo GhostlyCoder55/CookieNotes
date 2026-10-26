@@ -1,7 +1,7 @@
 {
   "images": [
     {
-      "filename": "orange_bell_pepper.svg",
+      "filename": "orange_bell_pepper.png",
       "idiom": "universal"
     }
   ],
@@ -10,7 +10,6 @@
     "version": 1
   },
   "properties": {
-    "preserves-vector-representation": true,
     "template-rendering-intent": "original"
   }
 }

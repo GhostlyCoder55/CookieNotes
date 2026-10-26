@@ -143,8 +143,8 @@ struct RecipeTimeRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: AppTheme.paddingSmall) {
-            TimeInputView(title: "Prep", value: $prepTime)
-            TimeInputView(title: "Cook", value: $cookTime)
+            TimeInputView(title: "Prep", value: $prepTime, step: 1)
+            TimeInputView(title: "Cook", value: $cookTime, step: 1)
             TimeInputView(title: "Serves", value: $servings, unit: "", step: 1, maxValue: RecipeInputLimits.maxServings)
         }
     }
@@ -154,7 +154,7 @@ struct TimeInputView: View {
     let title: String
     @Binding var value: Int
     var unit: String = "min"
-    var step: Int = 5
+    var step: Int = 1
     var maxValue: Int = RecipeInputLimits.maxMinutes
 
     var body: some View {

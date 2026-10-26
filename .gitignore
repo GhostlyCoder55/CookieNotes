@@ -5,3 +5,10 @@ xcuserdata/
 .DS_Store
 *.xcresult
 DerivedData/
+# Source icon packs (already imported into Assets.xcassets)
+food-icons-svg/
+food-icons-extra/
+food-icons-proteins-produce/
+.tmp_*/
+.tmp_icon_preview/
+.tmp_sliced_icons/

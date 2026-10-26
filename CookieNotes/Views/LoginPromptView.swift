@@ -16,14 +16,12 @@ struct WelcomeBackPromptView: View {
                 .scaleEffect(!reduceMotion && isAnimating ? 1.05 : 1)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 1).repeatForever(autoreverses: true), value: isAnimating)
 
-            Text("Welcome Back")
-                .font(AppTheme.title)
-                .foregroundStyle(AppTheme.primaryText)
-
-            Text("Your recipes are waiting. Add something new, discover online, or open a favorite.")
-                .font(AppTheme.body)
-                .foregroundStyle(AppTheme.secondaryText)
-                .multilineTextAlignment(.center)
+            TitleSubtitleBlock(
+                title: "Welcome Back",
+                subtitle: "Your recipes are waiting. Add something new, discover online, or open a favorite.",
+                style: .page,
+                alignment: .center
+            )
 
             if let lastLogin = notificationManager.lastLoginDate {
                 Text("Last visit: \(lastLogin, style: .date)")

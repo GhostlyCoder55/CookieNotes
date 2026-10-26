@@ -7,7 +7,6 @@ import SwiftUI
 
 struct AboutView: View {
     var adsActive: Bool
-    @EnvironmentObject private var tutorialManager: TutorialManager
     @ObservedObject private var ads = AdMobController.shared
 
     var body: some View {
@@ -22,30 +21,28 @@ struct AboutView: View {
                                 .scaledToFit()
                                 .frame(width: 64, height: 64)
                                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("CookieNotes")
-                                    .font(AppTheme.title)
-                                    .foregroundStyle(AppTheme.primaryText)
-                                Text("Your personal cooking library")
-                                    .font(AppTheme.caption)
-                                    .foregroundStyle(AppTheme.secondaryText)
-                            }
+                            TitleSubtitleBlock(
+                                title: "CookieNotes",
+                                subtitle: "Your personal cooking library",
+                                style: .compact,
+                                alignment: .leading
+                            )
                         }
 
-                        aboutBlock(
-                            title: "Library",
-                            body: "Keep personal recipes with photos, illustrated ingredients, favorites, and cook mode."
-                        )
-                        aboutBlock(
-                            title: "Discover",
-                            body: "Explore recipes from the database, preview the details, and save your favorites directly to your journal."
-                        )
-                        aboutBlock(
-                            title: "Privacy and ads",
-                            body: "Recipes stay on this device. Ads help keep CookieNotes free."
-                        )
+                        VStack(alignment: .leading, spacing: AppTheme.paddingMedium) {
+                            aboutBlock(
+                                title: "Library",
+                                body: "Keep personal recipes with photos, illustrated ingredients, favorites, and cook mode."
+                            )
+                            aboutBlock(
+                                title: "Discover",
+                                body: "Explore recipes from the database, preview the details, and save your favorites directly to your journal."
+                            )
+                            aboutBlock(
+                                title: "Privacy and ads",
+                                body: "Recipes stay on this device. Ads help keep CookieNotes free."
+                            )
 
-                        HStack(spacing: AppTheme.paddingSmall) {
                             Button {
                                 ads.privacySheetMode = .settings
                                 ads.presentPrivacySheet = true
@@ -54,15 +51,8 @@ struct AboutView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(PrimaryButtonStyle())
-
-                            Button {
-                                tutorialManager.resetTutorial()
-                            } label: {
-                                Text("Show tips")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(PrimaryButtonStyle())
                         }
+                        .sectionSurface()
 
                         if adsActive && ads.canPresentAds {
                             AdvertisementSlot(placementID: "about")
@@ -83,19 +73,20 @@ struct AboutView: View {
     }
 
     private func aboutBlock(title: String, body: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppTheme.paddingSmall) {
             Text(title)
                 .font(AppTheme.sectionLabel)
                 .foregroundStyle(AppTheme.accent)
             Text(body)
                 .font(AppTheme.body)
                 .foregroundStyle(AppTheme.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .sectionSurface()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
 #Preview {
     AboutView(adsActive: false)
-        .environmentObject(TutorialManager())
 }

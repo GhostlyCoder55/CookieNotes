@@ -15,7 +15,6 @@ struct TutorialView: View {
     private let steps: [TutorialStep] = [
         TutorialStep(
             title: "Welcome to CookieNotes",
-            headline: ("Welcome to", "CookieNotes"),
             description: "Keep recipes, discover new ones, and cook with confidence.",
             icon: "veggie_plate"
         ),
@@ -31,7 +30,6 @@ struct TutorialView: View {
         ),
         TutorialStep(
             title: "Ingredient art",
-            headline: ("Ingredient", "art"),
             description: "Browse colourful food art when adding ingredients, or type a custom item anytime.",
             icon: "tomatoes_vine"
         ),
@@ -71,6 +69,7 @@ struct TutorialView: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: currentStep)
 
                 pageIndicators
+                    .padding(.top, AppTheme.paddingSmall)
                     .padding(.bottom, 20)
 
                 Button(action: advance) {
@@ -88,7 +87,7 @@ struct TutorialView: View {
     }
 
     private func tipPage(_ step: TutorialStep) -> some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 0) {
             Spacer(minLength: 12)
 
             FoodIconView(iconID: step.icon, size: 148)
@@ -97,33 +96,14 @@ struct TutorialView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
                 .frame(maxWidth: .infinity)
 
-            VStack(spacing: 10) {
-                if let headline = step.headline {
-                    VStack(spacing: 2) {
-                        Text(headline.0)
-                        Text(headline.1)
-                    }
-                    .font(AppTheme.largeTitle)
-                    .foregroundStyle(AppTheme.primaryText)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                } else {
-                    Text(step.title)
-                        .font(AppTheme.largeTitle)
-                        .foregroundStyle(AppTheme.primaryText)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
-                        .frame(maxWidth: .infinity)
-                }
-
-                Text(step.description)
-                    .font(AppTheme.body)
-                    .foregroundStyle(AppTheme.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 340)
-                    .frame(maxWidth: .infinity)
-            }
+            TitleSubtitleBlock(
+                title: step.title,
+                subtitle: step.description,
+                style: .hero,
+                alignment: .center,
+                reservesTitleLines: true
+            )
+            .padding(.top, AppTheme.paddingLarge)
             .padding(.horizontal, AppTheme.paddingLarge)
 
             Spacer(minLength: 12)
@@ -164,8 +144,6 @@ struct TutorialView: View {
 
 struct TutorialStep {
     let title: String
-    /// Optional two-line headline kept centered as a pair (welcome screen).
-    var headline: (String, String)? = nil
     let description: String
     let icon: String
 }

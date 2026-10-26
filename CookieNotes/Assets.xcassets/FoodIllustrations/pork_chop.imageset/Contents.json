@@ -1,7 +1,7 @@
 {
   "images": [
     {
-      "filename": "pork_chop.svg",
+      "filename": "pork_chop.png",
       "idiom": "universal"
     }
   ],
@@ -10,7 +10,6 @@
     "version": 1
   },
   "properties": {
-    "preserves-vector-representation": true,
     "template-rendering-intent": "original"
   }
 }

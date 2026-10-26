@@ -18,7 +18,7 @@ struct AddRecipeView: View {
     @State private var source = ""
     @State private var prepTime = 0
     @State private var cookTime = 0
-    @State private var servings = 2
+    @State private var servings = 1
     @State private var category: RecipeCategory = .uncategorized
     @State private var coverIconID = "veggie_plate"
     @State private var usesCategoryCover = false

@@ -1,7 +1,7 @@
 {
   "images": [
     {
-      "filename": "dragon_fruit.svg",
+      "filename": "dragon_fruit.png",
       "idiom": "universal"
     }
   ],
@@ -10,7 +10,6 @@
     "version": 1
   },
   "properties": {
-    "preserves-vector-representation": true,
     "template-rendering-intent": "original"
   }
 }

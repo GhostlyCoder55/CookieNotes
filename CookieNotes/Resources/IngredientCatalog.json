@@ -25,6 +25,7 @@
         "edamame",
         "eggplant",
         "fennel",
+        "garlic",
         "green_beans",
         "green_bell_pepper",
         "green_onion",
@@ -42,7 +43,7 @@
         "pumpkin",
         "radish",
         "red_cabbage",
-        "red_onion_slice",
+        "red_onion",
         "shallot",
         "sweet_potato",
         "tomato",
@@ -145,6 +146,7 @@
         "canned_tuna",
         "caviar_bowl",
         "chicken_breast",
+        "chicken_thigh",
         "chicken_wings",
         "clam",
         "cod_fish",
@@ -188,7 +190,8 @@
         "tofu",
         "trout",
         "tuna",
-        "tuna_steak"
+        "tuna_steak",
+        "whole_raw_chicken"
       ]
     },
     {
@@ -250,17 +253,9 @@
       "title": "Spices & Herbs",
       "color": "#F08A43",
       "icons": [
-        "cinnamon",
-        "paprika",
-        "peppercorns",
-        "basil",
-        "rosemary",
-        "garlic",
-        "ginger",
-        "turmeric",
-        "chili_pepper",
         "allspice_berries",
         "anise_seeds",
+        "basil",
         "bbq_rub_bowl",
         "black_pepper_ground_bowl",
         "black_sesame_seeds",
@@ -271,9 +266,11 @@
         "cayenne_pepper_bowl",
         "chia_seeds",
         "chili_flakes_bowl",
+        "chili_pepper",
         "chili_powder_bowl",
         "chives",
         "cilantro",
+        "cinnamon",
         "cloves",
         "coarse_sea_salt",
         "coriander_powder_bowl",
@@ -290,7 +287,9 @@
         "fenugreek_seeds",
         "flax_seeds",
         "garam_masala_bowl",
+        "garlic",
         "garlic_powder_bowl",
+        "ginger",
         "ground_cinnamon_bowl",
         "ground_ginger_bowl",
         "ground_nutmeg_bowl",
@@ -304,13 +303,16 @@
         "nigella_seeds",
         "onion_powder_bowl",
         "oregano",
+        "paprika",
         "parsley",
         "pepper_grinder",
         "pepper_shaker",
+        "peppercorns",
         "pink_peppercorns",
         "poppy_seeds",
         "pumpkin_seeds",
         "rock_salt_chunks",
+        "rosemary",
         "saffron",
         "sage",
         "salt_bowl",
@@ -328,6 +330,7 @@
         "taco_seasoning_bowl",
         "tarragon",
         "thyme",
+        "turmeric",
         "turmeric_root",
         "watermelon_seeds",
         "white_pepper_bowl",
@@ -340,13 +343,13 @@
       "title": "Condiments",
       "color": "#C65D24",
       "icons": [
-        "ketchup",
-        "mustard",
+        "chili_paste",
         "hot_sauce",
-        "soy_sauce",
-        "relish",
+        "ketchup",
         "mayo",
-        "chili_paste"
+        "mustard",
+        "relish",
+        "soy_sauce"
       ]
     },
     {
@@ -354,12 +357,12 @@
       "title": "Drinks",
       "color": "#F08A43",
       "icons": [
-        "water_glass",
-        "coffee_cup",
-        "tea_cup",
-        "green_juice",
         "berry_smoothie",
-        "milk_bottle"
+        "coffee_cup",
+        "green_juice",
+        "milk_bottle",
+        "tea_cup",
+        "water_glass"
       ]
     },
     {
@@ -367,12 +370,12 @@
       "title": "Sweets & Snacks",
       "color": "#FBE362",
       "icons": [
+        "candy_bowl",
+        "chips",
         "chocolate_bar",
         "cookie",
-        "donut",
         "cupcake",
-        "candy_bowl",
-        "chips"
+        "donut"
       ]
     },
     {
@@ -380,18 +383,18 @@
       "title": "Dishes",
       "color": "#C65D24",
       "icons": [
-        "prepared_meal",
-        "frozen_pizza",
+        "burger",
         "dumplings",
         "frozen_berries",
-        "frozen_veg",
+        "frozen_pizza",
         "frozen_shrimp",
-        "salad_bowl",
-        "veggie_plate",
-        "soup_bowl",
+        "frozen_veg",
         "pizza_slice",
-        "burger",
-        "taco"
+        "prepared_meal",
+        "salad_bowl",
+        "soup_bowl",
+        "taco",
+        "veggie_plate"
       ]
     }
   ],
@@ -438,7 +441,7 @@
     "eggs_bowl": "Eggs bowl",
     "salmon": "Salmon",
     "steak": "Steak",
-    "roast_chicken": "Chicken",
+    "roast_chicken": "Roast chicken",
     "shrimp": "Shrimp",
     "fish": "Fish",
     "mussel": "Mussel",
@@ -673,7 +676,7 @@
     "green_bell_pepper": "Green bell pepper",
     "yellow_bell_pepper": "Yellow bell pepper",
     "orange_bell_pepper": "Orange bell pepper",
-    "jalapeno": "Jalapeno",
+    "jalapeno": "Jalapeño",
     "brussels_sprouts": "Brussels sprouts",
     "fennel": "Fennel",
     "cassava": "Cassava",
@@ -727,18 +730,21 @@
     "maple_syrup": "Maple syrup",
     "canned_beans": "Canned beans",
     "canned_tomatoes": "Canned tomatoes",
-    "tempeh": "Tempeh"
+    "tempeh": "Tempeh",
+    "chicken_thigh": "Chicken thighs",
+    "whole_raw_chicken": "Chicken",
+    "red_onion": "Red onion"
   },
   "aliases": {
     "tomato": "tomatoes_vine",
     "tomatoes": "tomatoes_vine",
     "egg": "eggs",
     "eggs": "eggs",
-    "chicken": "roast_chicken",
+    "chicken": "whole_raw_chicken",
     "rice": "rice_bowl",
     "pasta": "couscous_bowl",
-    "noodle": "couscous_bowl",
-    "noodles": "couscous_bowl",
+    "noodle": "noodle_nest",
+    "noodles": "noodle_nest",
     "bread": "bread_loaf",
     "cheese": "cheese_wedge",
     "mushroom": "tofu",
@@ -956,6 +962,16 @@
     "spaghetti": "spaghetti_dry",
     "penne": "penne_pasta",
     "tortilla": "tortillas",
-    "tortillas": "tortillas"
+    "tortillas": "tortillas",
+    "water": "water_glass",
+    "whole chicken": "whole_raw_chicken",
+    "chicken thighs": "chicken_thigh",
+    "chicken thigh": "chicken_thigh",
+    "boo choy": "bok_choy",
+    "coriander": "cilantro",
+    "fresh coriander": "cilantro",
+    "t bone": "t_bone_steak",
+    "grapefruit": "grapefruit_half",
+    "roast chicken": "roast_chicken"
   }
 }

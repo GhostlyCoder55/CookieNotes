@@ -18,17 +18,13 @@ struct PrivacyChoicesView: View {
 
                 FoodIconView(iconID: "honey_jar", size: 72)
 
-                Text(ads.privacySheetMode == .firstRun ? "Keep CookieNotes free" : "Ads")
-                    .font(AppTheme.title)
-                    .foregroundStyle(AppTheme.primaryText)
-                    .multilineTextAlignment(.center)
-
-                Text("Ads help support the app. Your recipes stay on this device.")
-                    .font(AppTheme.body)
-                    .foregroundStyle(AppTheme.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, AppTheme.paddingSmall)
+                TitleSubtitleBlock(
+                    title: ads.privacySheetMode == .firstRun ? "Keep CookieNotes free" : "Ads",
+                    subtitle: "Ads help support the app. Your recipes stay on this device.",
+                    style: .page,
+                    alignment: .center
+                )
+                .padding(.horizontal, AppTheme.paddingSmall)
 
                 if ads.privacySheetMode == .settings {
                     Text("Current choice: \(AdConsentStore.choice().title)")

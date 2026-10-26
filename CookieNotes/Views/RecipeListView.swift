@@ -278,9 +278,12 @@ struct FilterEmptyView: View {
 
     var body: some View {
         VStack(spacing: AppTheme.paddingMedium) {
-            Text("Nothing matches")
-                .font(AppTheme.headline)
-                .foregroundStyle(AppTheme.primaryText)
+            TitleSubtitleBlock(
+                title: "Nothing matches",
+                subtitle: "Try another meal type, or show everything in your library.",
+                style: .page,
+                alignment: .center
+            )
             Button("Show all recipes", action: reset)
                 .buttonStyle(PrimaryButtonStyle())
         }

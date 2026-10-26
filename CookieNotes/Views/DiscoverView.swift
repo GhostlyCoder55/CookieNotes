@@ -28,13 +28,14 @@ struct DiscoverView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var query = ""
     @State private var results: [DiscoveredRecipeSummary] = []
-    @State private var categories: [String] = ["Seafood", "Chicken", "Dessert", "Vegetarian", "Pasta", "Breakfast"]
-    @State private var selectedChip: DiscoverBrowseChip?
-    @State private var isLoading = false
+    @State private var categories: [String] = ["Beef", "Breakfast", "Chicken", "Dessert", "Pasta", "Seafood", "Vegetarian"]
+    @State private var selectedChip: DiscoverBrowseChip? = .category("Beef")
+    @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var path = NavigationPath()
     @State private var saveNotice: String?
     @State private var searchGeneration = 0
+    @State private var didLoadDefaultBrowse = false
 
     /// Cuisine chips — local catalog fills West African + curated French / North American / Latino & islands.
     private let cuisineAreas: [String] = [
@@ -97,20 +98,21 @@ struct DiscoverView: View {
                     path = NavigationPath()
                 }
             }
-            .task { await loadCategories() }
+            .task {
+                await loadCategories()
+                await loadDefaultBrowseIfNeeded()
+            }
         }
         .preferredColorScheme(.dark)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Find something delicious")
-                .font(AppTheme.title)
-                .foregroundStyle(AppTheme.primaryText)
-            Text("Search by dish or country.")
-                .font(AppTheme.body)
-                .foregroundStyle(AppTheme.secondaryText)
-        }
+        TitleSubtitleBlock(
+            title: "Find something delicious",
+            subtitle: "Search by dish or country.",
+            style: .page,
+            alignment: .leading
+        )
     }
 
     private var categoryRow: some View {
@@ -184,10 +186,27 @@ struct DiscoverView: View {
                 let preferred = ["Beef", "Breakfast", "Chicken", "Dessert", "Pasta", "Seafood", "Vegetarian", "Vegan", "Lamb", "Pork"]
                 let ordered = preferred.filter { remote.contains($0) } + remote.filter { !preferred.contains($0) }
                 categories = Array(ordered.prefix(8))
+                if !categories.contains("Beef") {
+                    categories.insert("Beef", at: 0)
+                }
             }
         } catch {
             // Keep curated defaults.
         }
+    }
+
+    /// Open Discover on Beef with recipes already listed (no empty pizza state).
+    private func loadDefaultBrowseIfNeeded() async {
+        guard !didLoadDefaultBrowse else { return }
+        didLoadDefaultBrowse = true
+        await browseDefaultBeef()
+    }
+
+    private func browseDefaultBeef() async {
+        let beef = DiscoverBrowseChip.category("Beef")
+        selectedChip = beef
+        query = ""
+        await runChip(beef)
     }
 
     private func scheduleLiveSearch(for raw: String) {
@@ -196,10 +215,13 @@ struct DiscoverView: View {
         let generation = searchGeneration
 
         if trimmed.isEmpty {
+            // Clearing a text search restores Beef. Chip taps set selectedChip first, then
+            // clear query — don't override those with Beef.
             if selectedChip == nil {
-                results = []
-                errorMessage = nil
-                isLoading = false
+                Task {
+                    guard generation == searchGeneration else { return }
+                    await browseDefaultBeef()
+                }
             }
             return
         }
