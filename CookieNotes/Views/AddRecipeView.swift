@@ -295,8 +295,12 @@ struct AddRecipeView: View {
         do {
             try modelContext.save()
             NotificationManager.shared.markUserAsActive()
-            InAppToast.shared.showRecipeAdded()
             dismiss()
+            // Show toast after the sheet settles so it doesn’t fight the dismiss animation.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(380))
+                InAppToast.shared.showRecipeAdded()
+            }
         } catch {
             formError = "The recipe couldn't be saved. Try again."
         }

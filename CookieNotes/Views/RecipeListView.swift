@@ -70,6 +70,10 @@ struct RecipeListView: View {
                     }
                 }
             }
+            // Inside NavigationStack + searchable → sits directly under the search bar.
+            .overlay(alignment: .top) {
+                InAppToastOverlay()
+            }
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.large)
             .searchable(

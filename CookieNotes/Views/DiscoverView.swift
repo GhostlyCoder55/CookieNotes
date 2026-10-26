@@ -74,6 +74,10 @@ struct DiscoverView: View {
                     .padding(AppTheme.paddingMedium)
                 }
             }
+            // Inside NavigationStack + searchable → sits directly under the search bar.
+            .overlay(alignment: .top) {
+                InAppToastOverlay()
+            }
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.large)
             // Keep the search field visible after tab switches (same reliability as Library).
@@ -88,8 +92,12 @@ struct DiscoverView: View {
             }
             .navigationDestination(for: String.self) { mealID in
                 DiscoverDetailView(mealID: mealID) {
-                    InAppToast.shared.showRecipeAdded()
+                    // Pop first so the Discover search bar is back, then toast under it.
                     path = NavigationPath()
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(320))
+                        InAppToast.shared.showRecipeAdded()
+                    }
                 }
             }
             .task {
