@@ -34,6 +34,7 @@ struct DiscoverView: View {
     @State private var errorMessage: String?
     @State private var path = NavigationPath()
     @State private var saveNotice: String?
+    @State private var saveNoticeGeneration = 0
     @State private var searchGeneration = 0
     @State private var didLoadDefaultBrowse = false
 
@@ -71,9 +72,7 @@ struct DiscoverView: View {
                         header
                         categoryRow
                         if let saveNotice {
-                            NoticeBanner(message: saveNotice, systemImage: "checkmark.circle.fill") {
-                                self.saveNotice = nil
-                            }
+                            NoticeBanner(message: saveNotice, systemImage: "checkmark.circle.fill")
                         }
                         content
                     }
@@ -94,7 +93,7 @@ struct DiscoverView: View {
             }
             .navigationDestination(for: String.self) { mealID in
                 DiscoverDetailView(mealID: mealID) { notice in
-                    saveNotice = notice
+                    presentSaveNotice(notice)
                     path = NavigationPath()
                 }
             }
@@ -175,6 +174,18 @@ struct DiscoverView: View {
             await runChip(selectedChip)
         } else {
             await runSearch(fromTyping: false)
+        }
+    }
+
+    /// Brief confirmation after saving a Discover recipe — auto-hides (no Dismiss tap).
+    private func presentSaveNotice(_ message: String) {
+        saveNoticeGeneration += 1
+        let generation = saveNoticeGeneration
+        saveNotice = message
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard generation == saveNoticeGeneration else { return }
+            saveNotice = nil
         }
     }
 
