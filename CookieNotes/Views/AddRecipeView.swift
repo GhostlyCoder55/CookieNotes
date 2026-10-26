@@ -295,6 +295,7 @@ struct AddRecipeView: View {
         do {
             try modelContext.save()
             NotificationManager.shared.markUserAsActive()
+            InAppToast.shared.showRecipeAdded()
             dismiss()
         } catch {
             formError = "The recipe couldn't be saved. Try again."

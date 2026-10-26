@@ -61,10 +61,8 @@ final class ImportCoordinator: ObservableObject {
             return
         }
 
-        if savedNames.count == 1 {
-            bannerMessage = "Saved \(savedNames[0]) to your library."
-        } else if savedNames.count > 1 {
-            bannerMessage = "Saved \(savedNames.count) recipes to your library."
+        if !savedNames.isEmpty {
+            InAppToast.shared.showRecipeAdded()
         }
     }
 }

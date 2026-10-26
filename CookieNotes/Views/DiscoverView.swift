@@ -33,8 +33,6 @@ struct DiscoverView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var path = NavigationPath()
-    @State private var saveNotice: String?
-    @State private var saveNoticeGeneration = 0
     @State private var searchGeneration = 0
     @State private var didLoadDefaultBrowse = false
 
@@ -71,9 +69,6 @@ struct DiscoverView: View {
                     VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
                         header
                         categoryRow
-                        if let saveNotice {
-                            NoticeBanner(message: saveNotice, systemImage: "checkmark.circle.fill")
-                        }
                         content
                     }
                     .padding(AppTheme.paddingMedium)
@@ -92,8 +87,8 @@ struct DiscoverView: View {
                 scheduleLiveSearch(for: newValue)
             }
             .navigationDestination(for: String.self) { mealID in
-                DiscoverDetailView(mealID: mealID) { notice in
-                    presentSaveNotice(notice)
+                DiscoverDetailView(mealID: mealID) {
+                    InAppToast.shared.showRecipeAdded()
                     path = NavigationPath()
                 }
             }
@@ -174,18 +169,6 @@ struct DiscoverView: View {
             await runChip(selectedChip)
         } else {
             await runSearch(fromTyping: false)
-        }
-    }
-
-    /// Brief confirmation after saving a Discover recipe — auto-hides (no Dismiss tap).
-    private func presentSaveNotice(_ message: String) {
-        saveNoticeGeneration += 1
-        let generation = saveNoticeGeneration
-        saveNotice = message
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(1500))
-            guard generation == saveNoticeGeneration else { return }
-            saveNotice = nil
         }
     }
 
@@ -345,7 +328,7 @@ struct DiscoverCard: View {
 
 struct DiscoverDetailView: View {
     let mealID: String
-    var onSaved: (String) -> Void
+    var onSaved: () -> Void
 
     @Environment(\.modelContext) private var modelContext
     @State private var detail: DiscoveredRecipeDetail?
@@ -493,7 +476,7 @@ struct DiscoverDetailView: View {
         do {
             try modelContext.save()
             NotificationManager.shared.markUserAsActive()
-            onSaved("Saved “\(detail.name)” to your library.")
+            onSaved()
         } catch {
             errorMessage = "Couldn’t save this recipe. Try again."
         }

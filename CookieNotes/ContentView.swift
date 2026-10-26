@@ -61,6 +61,7 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
 
             LoginPromptOverlay()
+            InAppToastOverlay()
         }
         .environmentObject(tutorialManager)
         .task {
