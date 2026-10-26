@@ -139,10 +139,9 @@ struct RecipeDetailView: View {
             IngredientPickerView { displayName, iconID in
                 if let target = illustrationTargetID,
                    let index = ingredients.firstIndex(where: { $0.id == target }) {
+                    // Picker choice always fills name + illustration for that row.
+                    ingredients[index].text = displayName
                     ingredients[index].iconID = iconID
-                    if ingredients[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        ingredients[index].text = displayName
-                    }
                 } else {
                     ingredients.append(EditableLine(text: displayName, iconID: iconID))
                 }

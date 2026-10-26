@@ -74,7 +74,7 @@ struct RecipeEditableLines: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Choose illustration")
+                        .accessibilityLabel("Choose ingredient")
                     } else if numbered {
                         Text("\(lineNumber(for: line.id)).")
                             .font(AppTheme.body.weight(.bold))
