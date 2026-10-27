@@ -160,7 +160,7 @@ final class Recipe {
     }
 
     var formattedTotalTime: String {
-        totalTime == 0 ? "Instant" : "\(totalTime) min total"
+        totalTime == 0 ? "Instant" : "\(RecipeTimeFormat.short(totalTime)) total"
     }
 
     var formattedServings: String? {

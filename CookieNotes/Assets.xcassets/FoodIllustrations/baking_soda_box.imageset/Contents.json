@@ -1,7 +1,7 @@
 {
   "images": [
     {
-      "filename": "baking_soda_box.svg",
+      "filename": "baking_soda_box.png",
       "idiom": "universal"
     }
   ],
@@ -10,7 +10,6 @@
     "version": 1
   },
   "properties": {
-    "preserves-vector-representation": true,
     "template-rendering-intent": "original"
   }
 }

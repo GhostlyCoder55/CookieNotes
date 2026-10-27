@@ -13,29 +13,51 @@ struct IngredientPickerView: View {
 
     private var catalog: IngredientCatalogFile { IngredientCatalog.shared }
 
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool { !trimmedQuery.isEmpty }
+
+    /// Search always spans every section; the chip only scopes browsing.
+    private var activeCategory: String? { isSearching ? nil : selectedCategory }
+
+    private static let pickableIcons: [String] = IngredientCatalog.allIcons.filter {
+        !$0.hasPrefix("cat_") && !$0.hasPrefix("extra_")
+    }
+
     private var filteredIcons: [String] {
-        let allPickable = IngredientCatalog.allIcons.filter {
-            !$0.hasPrefix("cat_") && !$0.hasPrefix("extra_")
-        }
-        let base: [String]
-        if let selectedCategory,
-           let cat = catalog.categories.first(where: { $0.id == selectedCategory }) {
+        let allPickable = Self.pickableIcons
+
+        let matched: [String]
+        if isSearching {
+            let trimmed = trimmedQuery
+            let pickable = Set(allPickable)
+            let lowered = trimmed.lowercased()
+            let aliasHits: Set<String> = lowered.count < 3 ? [] : Set(
+                catalog.aliases
+                    .filter { $0.key.hasPrefix(lowered) }
+                    .map(\.value)
+            ).intersection(pickable)
+            let hits = allPickable.filter {
+                IngredientCatalog.displayName(for: $0).localizedCaseInsensitiveContains(trimmed)
+                    || $0.replacingOccurrences(of: "_", with: " ").localizedCaseInsensitiveContains(trimmed)
+                    || aliasHits.contains($0)
+            }
+            matched = hits.sorted { lhs, rhs in
+                let l = IngredientCatalog.displayName(for: lhs).lowercased()
+                let r = IngredientCatalog.displayName(for: rhs).lowercased()
+                let lRank = l == lowered ? 0 : (l.hasPrefix(lowered) ? 1 : 2)
+                let rRank = r == lowered ? 0 : (r.hasPrefix(lowered) ? 1 : 2)
+                return lRank != rRank ? lRank < rRank : l < r
+            }
+        } else if let selectedCategory,
+                  let cat = catalog.categories.first(where: { $0.id == selectedCategory }) {
             // Keep catalog order; drop blank ids so a bad entry can't blank the grid.
-            base = cat.icons.filter { !$0.isEmpty }
+            matched = cat.icons.filter { !$0.isEmpty }
         } else {
             // Unknown/missing category falls back to All instead of an empty screen.
-            base = allPickable
-        }
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let matched: [String]
-        if trimmed.isEmpty {
-            matched = base
-        } else {
-            matched = base.filter {
-                IngredientCatalog.displayName(for: $0).localizedCaseInsensitiveContains(trimmed)
-                    || $0.localizedCaseInsensitiveContains(trimmed)
-            }
+            matched = allPickable
         }
 
         // One card per display name so search never shows duplicates like two "Baking soda"s.
@@ -52,10 +74,12 @@ struct IngredientPickerView: View {
     ]
 
     private var gridIdentity: String {
-        "\(selectedCategory ?? "all")|\(query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+        "\(activeCategory ?? "all")|\(trimmedQuery.lowercased())"
     }
 
     var body: some View {
+        let filteredIcons = filteredIcons
+
         NavigationStack {
             ZStack {
                 AppTheme.background.ignoresSafeArea()
@@ -103,13 +127,13 @@ struct IngredientPickerView: View {
     private var categoryChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ColorChip(title: "All", selected: selectedCategory == nil) {
+                ColorChip(title: "All", selected: activeCategory == nil) {
                     selectCategory(nil)
                 }
                 ForEach(catalog.categories) { category in
                     ColorChip(
                         title: category.title,
-                        selected: selectedCategory == category.id
+                        selected: activeCategory == category.id
                     ) {
                         selectCategory(category.id)
                     }
@@ -128,7 +152,7 @@ struct IngredientPickerView: View {
                 .font(AppTheme.body.weight(.semibold))
                 .foregroundStyle(AppTheme.primaryText)
                 .multilineTextAlignment(.center)
-            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if isSearching {
                 Button("Clear search") {
                     query = ""
                 }
@@ -141,18 +165,14 @@ struct IngredientPickerView: View {
     }
 
     private var emptyTitle: String {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isSearching {
+            return "No ingredients match “\(trimmedQuery)”"
+        }
         if let selectedCategory,
            let title = catalog.categories.first(where: { $0.id == selectedCategory })?.title {
-            if trimmed.isEmpty {
-                return "No ingredients in \(title)"
-            }
-            return "No \(title.lowercased()) match “\(trimmed)”"
+            return "No ingredients in \(title)"
         }
-        if trimmed.isEmpty {
-            return "No ingredients found"
-        }
-        return "No ingredients match “\(trimmed)”"
+        return "No ingredients found"
     }
 
     private func selectCategory(_ id: String?) {

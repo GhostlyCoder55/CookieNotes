@@ -218,7 +218,7 @@ struct RecipeDetailView: View {
             ZStack(alignment: .bottomLeading) {
                 if !recipe.usesCategoryCover,
                    let hero = visibleExistingPhotos.first?.imageData,
-                   let image = UIImage(data: hero) {
+                   let image = LocalImageCache.image(for: hero, maxPixel: 1400) {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
@@ -646,9 +646,11 @@ struct TimeInfoView: View {
             Text(title)
                 .font(AppTheme.smallCaption)
                 .foregroundStyle(AppTheme.tertiaryText)
-            Text(time == 0 ? "None" : "\(time) min")
+            Text(time == 0 ? "None" : RecipeTimeFormat.short(time))
                 .font(AppTheme.headline)
                 .foregroundStyle(AppTheme.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)

@@ -844,7 +844,7 @@ struct FoodIconView: View {
             if id.isEmpty {
                 Image(systemName: "leaf.fill")
                     .foregroundStyle(AppTheme.leafGreen)
-            } else if UIImage(named: id) != nil {
+            } else if Self.hasAsset(id) {
                 Image(id)
                     .resizable()
                     .interpolation(.high)
@@ -855,6 +855,16 @@ struct FoodIconView: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    private static let assetLookup = LockedCache<String, Bool>()
+
+    /// `UIImage(named:)` on every render walks the asset catalog; remember the answer per id.
+    private static func hasAsset(_ id: String) -> Bool {
+        if let known = assetLookup.value(for: id) { return known }
+        let exists = UIImage(named: id) != nil
+        assetLookup.set(exists, for: id)
+        return exists
     }
 }
 

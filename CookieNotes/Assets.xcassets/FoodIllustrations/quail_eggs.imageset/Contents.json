@@ -1,7 +1,7 @@
 {
   "images": [
     {
-      "filename": "quail_eggs.svg",
+      "filename": "quail_eggs.png",
       "idiom": "universal"
     }
   ],
@@ -10,7 +10,6 @@
     "version": 1
   },
   "properties": {
-    "preserves-vector-representation": true,
     "template-rendering-intent": "original"
   }
 }

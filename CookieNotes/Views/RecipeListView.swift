@@ -35,15 +35,11 @@ struct RecipeListView: View {
         adsActive && path.isEmpty && !showingAddRecipe && ads.canPresentAds
     }
 
-    private var libraryRecipes: [Recipe] {
-        displayed
-    }
-
-    private var libraryIsEmpty: Bool {
-        libraryRecipes.isEmpty && searchText.isEmpty && filter == .all
-    }
-
     var body: some View {
+        // Filter + sort once per render; it scans every recipe's text on each keystroke.
+        let libraryRecipes = displayed
+        let libraryIsEmpty = libraryRecipes.isEmpty && searchText.isEmpty && filter == .all
+
         NavigationStack(path: $path) {
             ZStack {
                 AppTheme.background.ignoresSafeArea()

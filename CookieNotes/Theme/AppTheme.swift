@@ -405,7 +405,7 @@ struct RecipeThumbnail: View {
 
     @ViewBuilder
     private func content(in size: CGSize) -> some View {
-        if let data, let image = UIImage(data: data) {
+        if let data, let image = LocalImageCache.image(for: data) {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()

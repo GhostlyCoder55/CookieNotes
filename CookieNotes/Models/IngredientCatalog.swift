@@ -57,18 +57,42 @@ enum IngredientCatalog {
     static func iconID(matching text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return nil }
-        if let exact = shared.aliases[trimmed] { return exact }
-        for (alias, icon) in shared.aliases where trimmed.contains(alias) {
-            return icon
-        }
-        for (icon, name) in shared.displayNames where trimmed.contains(name.lowercased()) {
-            return icon
-        }
-        return nil
+        if let cached = matchCache.value(for: trimmed) { return cached.isEmpty ? nil : cached }
+
+        let match = shared.aliases[trimmed]
+            ?? aliasesByLength.first { trimmed.contains($0.key) }?.icon
+            ?? namesByLength.first { trimmed.contains($0.key) }?.icon
+        matchCache.set(match ?? "", for: trimmed)
+        return match
     }
 
-    static var allIcons: [String] {
-        Array(Set(shared.categories.flatMap(\.icons))).sorted()
+    /// Longest phrase wins ("beef stock" before "beef") and the result no longer
+    /// depends on dictionary iteration order.
+    private static let aliasesByLength: [(key: String, icon: String)] = shared.aliases
+        .map { (key: $0.key.lowercased(), icon: $0.value) }
+        .filter { !$0.key.isEmpty }
+        .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+
+    private static let namesByLength: [(key: String, icon: String)] = shared.displayNames
+        .map { (key: $0.value.lowercased(), icon: $0.key) }
+        .filter { !$0.key.isEmpty }
+        .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+
+    private static let matchCache = LockedCache<String, String>()
+
+    static let allIcons: [String] = Array(Set(shared.categories.flatMap(\.icons))).sorted()
+}
+
+final class LockedCache<Key: Hashable, Value>: @unchecked Sendable {
+    private var storage: [Key: Value] = [:]
+    private let lock = NSLock()
+
+    func value(for key: Key) -> Value? {
+        lock.withLock { storage[key] }
+    }
+
+    func set(_ value: Value, for key: Key) {
+        lock.withLock { storage[key] = value }
     }
 }
 

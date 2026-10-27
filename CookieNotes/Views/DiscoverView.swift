@@ -242,6 +242,12 @@ struct DiscoverView: View {
         let generation = searchGeneration
         selectedChip = nil
         errorMessage = nil
+        if let cached = await MealDBClient.shared.cachedList(forKey: MealDBClient.listKey(search: trimmed)) {
+            guard generation == searchGeneration else { return }
+            results = cached
+            isLoading = false
+            return
+        }
         if !fromTyping || results.isEmpty {
             isLoading = true
         }
@@ -263,17 +269,37 @@ struct DiscoverView: View {
 
     private func runChip(_ chip: DiscoverBrowseChip) async {
         searchGeneration += 1
-        isLoading = true
+        let generation = searchGeneration
         errorMessage = nil
-        defer { isLoading = false }
+        let key: String
+        switch chip {
+        case .category(let category): key = MealDBClient.listKey(category: category)
+        case .area(let area): key = MealDBClient.listKey(area: area)
+        }
+        if let cached = await MealDBClient.shared.cachedList(forKey: key) {
+            guard generation == searchGeneration else { return }
+            results = cached
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        defer {
+            if generation == searchGeneration { isLoading = false }
+        }
         do {
+            let found: [DiscoveredRecipeSummary]
             switch chip {
             case .category(let category):
-                results = try await MealDBClient.shared.filter(category: category)
+                found = try await MealDBClient.shared.filter(category: category)
             case .area(let area):
-                results = try await MealDBClient.shared.filter(area: area)
+                found = try await MealDBClient.shared.filter(area: area)
             }
+            // A newer chip tap or search owns the grid now.
+            guard generation == searchGeneration else { return }
+            results = found
         } catch {
+            guard generation == searchGeneration else { return }
             errorMessage = error.localizedDescription
             results = []
         }
@@ -282,26 +308,14 @@ struct DiscoverView: View {
 
 struct DiscoverCard: View {
     let recipe: DiscoveredRecipeSummary
+    @State private var times: RecipeTimeEstimate?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Group {
-                if let url = recipe.thumbnailURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .failure:
-                            illustrationFallback
-                        default:
-                            AppTheme.blush.overlay(ProgressView())
-                        }
-                    }
-                } else {
-                    illustrationFallback
-                }
+            CachedRemoteImage(url: recipe.cardThumbnailURL, maxPointSize: 200) {
+                AppTheme.blush.overlay(ProgressView())
+            } failure: {
+                illustrationFallback
             }
             .frame(maxWidth: .infinity)
             .frame(height: 120)
@@ -315,15 +329,28 @@ struct DiscoverCard: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(recipe.area ?? recipe.category ?? " ")
-                .font(AppTheme.smallCaption.weight(.semibold))
-                .foregroundStyle(AppTheme.accentAction)
-                .lineLimit(1)
-                .opacity((recipe.area ?? recipe.category) == nil ? 0 : 1)
+            HStack(spacing: 6) {
+                // Reserved width/line so the card doesn't jump when the time arrives.
+                Label(times.map { RecipeTimeFormat.short($0.total) } ?? "– min", systemImage: "clock")
+                    .labelStyle(.titleAndIcon)
+                    .font(AppTheme.smallCaption.weight(.semibold))
+                    .foregroundStyle(AppTheme.accentAction)
+                    .lineLimit(1)
+                    .redacted(reason: times == nil ? .placeholder : [])
+                Spacer(minLength: 4)
+                Text(recipe.area ?? recipe.category ?? " ")
+                    .font(AppTheme.smallCaption)
+                    .foregroundStyle(AppTheme.tertiaryText)
+                    .lineLimit(1)
+                    .opacity((recipe.area ?? recipe.category) == nil ? 0 : 1)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
+        .task(id: recipe.id) {
+            times = await MealDBClient.shared.timeEstimate(id: recipe.id)
+        }
     }
 
     private var illustrationFallback: some View {
@@ -340,6 +367,8 @@ struct DiscoverDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var detail: DiscoveredRecipeDetail?
+    @State private var times = RecipeTimeEstimate(prep: 0, cook: 0)
+    @State private var ingredientIcons: [String] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isSaving = false
@@ -352,22 +381,11 @@ struct DiscoverDetailView: View {
             } else if let detail {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
-                        Group {
-                            if let url = detail.thumbnailURL {
-                                AsyncImage(url: url) { phase in
-                                    switch phase {
-                                    case .success(let image):
-                                        image.resizable().scaledToFill()
-                                    default:
-                                        AppTheme.blush.overlay {
-                                            FoodIconView(iconID: detail.illustrationIconID ?? "salad_bowl", size: 100)
-                                        }
-                                    }
-                                }
-                            } else {
-                                AppTheme.blush.overlay {
-                                    FoodIconView(iconID: detail.illustrationIconID ?? "salad_bowl", size: 100)
-                                }
+                        CachedRemoteImage(url: detail.thumbnailURL, maxPointSize: 440) {
+                            AppTheme.blush.overlay(ProgressView())
+                        } failure: {
+                            AppTheme.blush.overlay {
+                                FoodIconView(iconID: detail.illustrationIconID ?? "salad_bowl", size: 100)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -382,10 +400,24 @@ struct DiscoverDetailView: View {
                             .font(AppTheme.caption)
                             .foregroundStyle(AppTheme.secondaryText)
 
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                TimeInfoView(title: "Prep", time: times.prep)
+                                TimeInfoView(title: "Cook", time: times.cook)
+                                TimeInfoView(title: "Total", time: times.total)
+                            }
+                            Text("Estimated from the recipe steps")
+                                .font(AppTheme.smallCaption)
+                                .foregroundStyle(AppTheme.tertiaryText)
+                        }
+
                         section(title: "Ingredients") {
                             ForEach(Array(detail.ingredients.enumerated()), id: \.offset) { index, line in
                                 HStack(spacing: 10) {
-                                    FoodIconView(iconID: IngredientCatalog.iconID(matching: line) ?? "", size: 36)
+                                    FoodIconView(
+                                        iconID: ingredientIcons.indices.contains(index) ? ingredientIcons[index] : "",
+                                        size: 36
+                                    )
                                     Text(line)
                                         .font(AppTheme.body)
                                         .foregroundStyle(AppTheme.primaryText)
@@ -449,7 +481,10 @@ struct DiscoverDetailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            detail = try await MealDBClient.shared.lookup(id: mealID)
+            let loaded = try await MealDBClient.shared.lookup(id: mealID)
+            times = loaded.timeEstimate
+            ingredientIcons = loaded.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
+            detail = loaded
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -458,7 +493,9 @@ struct DiscoverDetailView: View {
     private func save(_ detail: DiscoveredRecipeDetail) async {
         isSaving = true
         defer { isSaving = false }
-        let icons = detail.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
+        let icons = ingredientIcons.count == detail.ingredients.count
+            ? ingredientIcons
+            : detail.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
         let mappedCategory = RecipeCategory.inferred(fromMealDB: detail.category)
         let recipe = Recipe(
             name: detail.name,
@@ -468,6 +505,8 @@ struct DiscoverDetailView: View {
             source: detail.sourceURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
                 ? (detail.sourceURL ?? detail.attribution)
                 : detail.attribution,
+            prepTime: times.prep,
+            cookTime: times.cook,
             isImported: true,
             categoryRaw: mappedCategory.rawValue,
             ingredientIconIDs: icons,

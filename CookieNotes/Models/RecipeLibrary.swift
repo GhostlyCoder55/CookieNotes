@@ -93,8 +93,9 @@ enum RecipeLibrary {
         sort: RecipeSort = .newest
     ) -> [T] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Cheap category check first so text search only scans recipes that can show.
         let filtered = recipes.filter { recipe in
-            matches(recipe, query: trimmedQuery) && matches(recipe, filter: filter)
+            matches(recipe, filter: filter) && matches(recipe, query: trimmedQuery)
         }
         return sorted(filtered, by: sort)
     }

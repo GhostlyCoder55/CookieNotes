@@ -39,7 +39,7 @@ struct ContentView: View {
                     storageWarning: storageWarning
                 )
                 .tabItem {
-                    Label("Library", systemImage: "book.closed.fill")
+                     Label("Library", systemImage: "book.closed.fill")
                 }
                 .tag(0)
 

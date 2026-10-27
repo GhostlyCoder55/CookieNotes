@@ -1,7 +1,7 @@
 {
   "images": [
     {
-      "filename": "mozzarella.svg",
+      "filename": "mozzarella.png",
       "idiom": "universal"
     }
   ],
@@ -10,7 +10,6 @@
     "version": 1
   },
   "properties": {
-    "preserves-vector-representation": true,
     "template-rendering-intent": "original"
   }
 }

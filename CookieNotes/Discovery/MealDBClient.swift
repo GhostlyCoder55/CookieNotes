@@ -14,6 +14,14 @@ struct DiscoveredRecipeSummary: Identifiable, Hashable {
     var illustrationIconID: String? = nil
 
     var isLocal: Bool { id.hasPrefix("local-") }
+
+    /// TheMealDB serves ~500px variants; full-size images are 4x heavier than a card needs.
+    var cardThumbnailURL: URL? {
+        guard let thumbnailURL,
+              thumbnailURL.host?.contains("themealdb.com") == true,
+              !thumbnailURL.lastPathComponent.hasSuffix("medium") else { return thumbnailURL }
+        return thumbnailURL.appendingPathComponent("medium")
+    }
 }
 
 struct DiscoveredRecipeDetail: Identifiable, Hashable {
@@ -30,6 +38,14 @@ struct DiscoveredRecipeDetail: Identifiable, Hashable {
     var illustrationIconID: String? = nil
 
     var isLocal: Bool { id.hasPrefix("local-") }
+
+    var timeEstimate: RecipeTimeEstimate {
+        RecipeTimeEstimator.estimate(
+            instructions: instructions,
+            ingredientCount: ingredients.count,
+            category: category
+        )
+    }
 
     var attribution: String {
         let sourceLabel: String
@@ -67,6 +83,38 @@ actor MealDBClient {
     static let shared = MealDBClient()
 
     private var cachedAreas: [String]?
+    private var cachedCategories: [String]?
+    private var listCache: [String: [DiscoveredRecipeSummary]] = [:]
+    private var detailCache: [String: DiscoveredRecipeDetail] = [:]
+    private var detailTasks: [String: Task<DiscoveredRecipeDetail, Error>] = [:]
+    private var timeCache: [String: RecipeTimeEstimate] = [:]
+
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: 40 * 1024 * 1024)
+        config.timeoutIntervalForRequest = 15
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
+    /// Instant results for chips / searches already loaded this session.
+    func cachedList(forKey key: String) -> [DiscoveredRecipeSummary]? {
+        listCache[key]
+    }
+
+    static func listKey(category: String) -> String { "c:\(category.lowercased())" }
+    static func listKey(area: String) -> String { "a:\(area.lowercased())" }
+    static func listKey(search: String) -> String {
+        "s:\(search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+    }
+
+    func timeEstimate(id: String) async -> RecipeTimeEstimate? {
+        if let cached = timeCache[id] { return cached }
+        guard let detail = try? await lookup(id: id) else { return nil }
+        let estimate = detail.timeEstimate
+        timeCache[id] = estimate
+        return estimate
+    }
 
     /// Development falls back to TheMealDB test key `1`. Set `COOKIENOTES_MEALDB_API_KEY` before App Store release.
     private var apiKey: String {
@@ -90,13 +138,19 @@ actor MealDBClient {
     func search(query: String) async throws -> [DiscoveredRecipeSummary] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
+        let key = Self.listKey(search: trimmed)
+        if let cached = listCache[key] { return cached }
 
         // Country / region queries (e.g. "Nigeria", "Thai") browse by area.
         if let area = LocalMealCatalog.resolvedArea(for: trimmed) {
-            return try await filter(area: area)
+            let results = try await filter(area: area)
+            listCache[key] = results
+            return results
         }
         if let area = await matchedRemoteArea(for: trimmed) {
-            return try await filter(area: area)
+            let results = try await filter(area: area)
+            listCache[key] = results
+            return results
         }
 
         let local = LocalMealCatalog.search(query: trimmed)
@@ -105,25 +159,40 @@ actor MealDBClient {
             ?? URL(string: baseURL.absoluteString + "search.php?s=\(encoded)")!
         let remote: [DiscoveredRecipeSummary]
         do {
-            remote = try await fetchMeals(url: url).map(\.asSummary)
+            let meals = try await fetchMeals(url: url)
+            // search.php returns full meals — seed the detail cache so opening one is instant.
+            for meal in meals {
+                let detail = meal.asDetail
+                detailCache[detail.id] = detail
+            }
+            remote = meals.map(\.asSummary)
         } catch {
-            remote = []
             if local.isEmpty { throw error }
+            // Offline: show local matches but don't cache them as the full answer.
+            return local
         }
-        return Self.merging(local: local, remote: remote)
+        let results = Self.merging(local: local, remote: remote)
+        listCache[key] = results
+        return results
     }
 
     func filter(category: String) async throws -> [DiscoveredRecipeSummary] {
+        let key = Self.listKey(category: category)
+        if let cached = listCache[key] { return cached }
         let url = URL(string: baseURL.absoluteString + "filter.php?c=\(category.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? category)")!
         let meals = try await fetchMeals(url: url)
         let remote = meals.map { $0.asSummary(categoryHint: category) }
         let local = LocalMealCatalog.shared
             .filter { $0.category.caseInsensitiveCompare(category) == .orderedSame }
             .map(\.summary)
-        return Self.merging(local: local, remote: remote)
+        let results = Self.merging(local: local, remote: remote)
+        listCache[key] = results
+        return results
     }
 
     func filter(area: String) async throws -> [DiscoveredRecipeSummary] {
+        let key = Self.listKey(area: area)
+        if let cached = listCache[key] { return cached }
         let local = LocalMealCatalog.filter(area: area)
         let encoded = area.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? area
         let url = URL(string: baseURL.absoluteString + "filter.php?a=\(encoded)")!
@@ -143,24 +212,37 @@ actor MealDBClient {
             remote = []
             if local.isEmpty { throw error }
         }
-        return Self.merging(local: local, remote: remote)
+        let results = Self.merging(local: local, remote: remote)
+        if !remote.isEmpty { listCache[key] = results }
+        return results
     }
 
     func lookup(id: String) async throws -> DiscoveredRecipeDetail {
         if let local = LocalMealCatalog.detail(id: id) {
             return local
         }
+        if let cached = detailCache[id] { return cached }
+        // Cards prefetch details for their times; share one request per meal.
+        if let running = detailTasks[id] { return try await running.value }
+
         let url = URL(string: baseURL.absoluteString + "lookup.php?i=\(id)")!
-        let meals = try await fetchMeals(url: url)
-        guard let meal = meals.first else { throw MealDBError.empty }
-        return meal.asDetail
+        let task = Task { [session] () throws -> DiscoveredRecipeDetail in
+            let meals = try await Self.fetchMeals(url: url, session: session)
+            guard let meal = meals.first else { throw MealDBError.empty }
+            return meal.asDetail
+        }
+        detailTasks[id] = task
+        defer { detailTasks[id] = nil }
+        let detail = try await task.value
+        detailCache[id] = detail
+        return detail
     }
 
     func areas() async throws -> [String] {
         if let cachedAreas { return cachedAreas }
         let url = baseURL.appendingPathComponent("list.php").appending(queryItems: [URLQueryItem(name: "a", value: "list")])
             ?? URL(string: baseURL.absoluteString + "list.php?a=list")!
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw MealDBError.badResponse
         }
@@ -175,9 +257,10 @@ actor MealDBClient {
     }
 
     func categories() async throws -> [String] {
+        if let cachedCategories { return cachedCategories }
         let url = baseURL.appendingPathComponent("list.php").appending(queryItems: [URLQueryItem(name: "c", value: "list")])
             ?? URL(string: baseURL.absoluteString + "list.php?c=list")!
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw MealDBError.badResponse
         }
@@ -186,11 +269,17 @@ actor MealDBClient {
             let meals: [Item]?
         }
         let decoded = try JSONDecoder().decode(ListEnvelope.self, from: data)
-        return (decoded.meals ?? []).compactMap(\.strCategory)
+        let list = (decoded.meals ?? []).compactMap(\.strCategory)
+        if !list.isEmpty { cachedCategories = list }
+        return list
     }
 
     private func fetchMeals(url: URL) async throws -> [MealDBMeal] {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        try await Self.fetchMeals(url: url, session: session)
+    }
+
+    private static func fetchMeals(url: URL, session: URLSession) async throws -> [MealDBMeal] {
+        let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw MealDBError.badResponse
         }
