@@ -140,16 +140,29 @@ struct AddRecipeView: View {
     }
 
     private var coverPicker: some View {
-        HStack(spacing: 16) {
-            FoodIconView(iconIDs: coverPreviewElements, size: 88)
-                .padding(8)
-                .background(AppTheme.parchment)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        let coverImage = photos.first?.thumbnail
+        return HStack(spacing: 16) {
+            Group {
+                if let coverImage {
+                    Image(uiImage: coverImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    FoodIconView(iconIDs: coverPreviewElements, size: 88)
+                }
+            }
+            .frame(width: 104, height: 104)
+            .background(AppTheme.parchment)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             VStack(alignment: .leading, spacing: 8) {
-                Text("Cover illustration")
+                Text(coverImage == nil ? "Cover illustration" : "Cover photo")
                     .font(AppTheme.headline)
                     .foregroundStyle(AppTheme.primaryText)
-                Text("Uses your first illustrated ingredient, or pick a category vibe below.")
+                Text(
+                    coverImage == nil
+                        ? "Shown when you haven’t added photos. Pick a category vibe below."
+                        : "Your first photo is the cover. Remove all photos to use an illustration instead."
+                )
                     .font(AppTheme.caption)
                     .foregroundStyle(AppTheme.secondaryText)
             }

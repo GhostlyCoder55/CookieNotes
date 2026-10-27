@@ -87,8 +87,9 @@ enum PersistenceController {
 
     /// Drops seeded example recipes so the library only shows the user's own notes.
     private static func removeSampleRecipes(from context: ModelContext) throws {
-        let samples = try context.fetch(FetchDescriptor<Recipe>())
-            .filter(\.isSample)
+        let samples = try context.fetch(
+            FetchDescriptor<Recipe>(predicate: #Predicate { $0.isSample == true })
+        )
         guard !samples.isEmpty else { return }
         for recipe in samples {
             context.delete(recipe)
@@ -100,8 +101,21 @@ enum PersistenceController {
     private static func removeLegacyDemoRecipes(from context: ModelContext, defaults: UserDefaults) throws {
         guard !defaults.bool(forKey: purgedDemoRecipesKey) else { return }
 
-        let recipes = try context.fetch(FetchDescriptor<Recipe>())
-        let demos = recipes.filter(Self.isLegacyDemoRecipe(_:))
+        // Bound string values — SwiftData compiles these into parameterized predicates.
+        let friedRice = "Weeknight Fried Rice"
+        let cookies = "Chocolate Chip Cookies"
+        let cambodian = "Cambodian Waffles"
+        let numPoum = "Num Poum"
+        let demos = try context.fetch(
+            FetchDescriptor<Recipe>(
+                predicate: #Predicate { recipe in
+                    recipe.name == friedRice
+                        || recipe.name == cookies
+                        || recipe.name.localizedStandardContains(cambodian)
+                        || recipe.name.localizedStandardContains(numPoum)
+                }
+            )
+        )
         for recipe in demos {
             context.delete(recipe)
         }
@@ -109,15 +123,6 @@ enum PersistenceController {
             try context.save()
         }
         defaults.set(true, forKey: purgedDemoRecipesKey)
-    }
-
-    private static func isLegacyDemoRecipe(_ recipe: Recipe) -> Bool {
-        let name = recipe.name
-        if name.localizedCaseInsensitiveCompare("Weeknight Fried Rice") == .orderedSame { return true }
-        if name.localizedCaseInsensitiveCompare("Chocolate Chip Cookies") == .orderedSame { return true }
-        if name.localizedCaseInsensitiveContains("Cambodian Waffles") { return true }
-        if name.localizedCaseInsensitiveContains("Num Poum") { return true }
-        return false
     }
 
     static let preview: ModelContainer = {

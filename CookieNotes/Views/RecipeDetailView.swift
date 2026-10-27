@@ -216,8 +216,7 @@ struct RecipeDetailView: View {
     private var reader: some View {
         VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
             ZStack(alignment: .bottomLeading) {
-                if !recipe.usesCategoryCover,
-                   let hero = visibleExistingPhotos.first?.imageData,
+                if let hero = visibleExistingPhotos.first?.imageData,
                    let image = LocalImageCache.image(for: hero, maxPixel: 1400) {
                     Image(uiImage: image)
                         .resizable()
@@ -332,19 +331,29 @@ struct RecipeDetailView: View {
     }
 
     private var editCoverPreview: some View {
-        HStack(spacing: 16) {
-            FoodIconView(iconIDs: editCoverElements, size: 72)
-                .padding(8)
-                .background(AppTheme.parchment)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        let coverPhoto = visibleExistingPhotos.first?.thumbnailData
+            ?? pendingPhotos.first?.stored.thumbnailData
+        return HStack(spacing: 16) {
+            Group {
+                if let coverPhoto, let image = LocalImageCache.image(for: coverPhoto) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    FoodIconView(iconIDs: editCoverElements, size: 72)
+                }
+            }
+            .frame(width: 88, height: 88)
+            .background(AppTheme.parchment)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
-                Text("Cover illustration")
+                Text(coverPhoto == nil ? "Cover illustration" : "Cover photo")
                     .font(AppTheme.headline)
                     .foregroundStyle(AppTheme.primaryText)
                 Text(
-                    usesCategoryCover
-                        ? "Using the \(category.title) cover instead of the Discover photo."
-                        : "Pick a category to switch the cover to that meal’s illustration."
+                    coverPhoto == nil
+                        ? "Shown when this recipe has no photos. Pick a category to choose the illustration."
+                        : "Your first photo is the cover. Remove all photos to use an illustration instead."
                 )
                     .font(AppTheme.caption)
                     .foregroundStyle(AppTheme.secondaryText)

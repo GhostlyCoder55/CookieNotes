@@ -134,13 +134,12 @@ final class Recipe {
         }
     }
 
+    /// Library/detail cover: first photo when present; illustration only as a fallback.
     var cardThumbnail: Data? {
-        // Category covers win over Discover thumbnails once the user picks a meal type.
-        guard !usesCategoryCover else { return nil }
-        return sortedPhotos.first?.thumbnailData
+        sortedPhotos.first?.thumbnailData
     }
 
-    /// Applies a meal category and its default cover illustration.
+    /// Applies a meal category and its default cover illustration (used when there are no photos).
     func applyCategoryCover(_ newCategory: RecipeCategory) {
         category = newCategory
         coverIconID = newCategory.preferredCoverIconID

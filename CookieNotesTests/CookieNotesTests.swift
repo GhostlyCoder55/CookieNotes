@@ -357,7 +357,9 @@ struct StorageTests {
         #expect(defaults.bool(forKey: PersistenceController.initialSetupKey))
 
         try PersistenceController.prepareLibrary(context: context, defaults: makeDefaults(), seedSamples: true)
-        let samples = try context.fetch(FetchDescriptor<Recipe>()).filter(\.isSample)
+        let samples = try context.fetch(
+            FetchDescriptor<Recipe>(predicate: #Predicate { $0.isSample == true })
+        )
         #expect(samples.count == 1)
         #expect(samples[0].name == "Weeknight Fried Rice")
     }

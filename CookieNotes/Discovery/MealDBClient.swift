@@ -154,9 +154,7 @@ actor MealDBClient {
         }
 
         let local = LocalMealCatalog.search(query: trimmed)
-        let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
-        let url = baseURL.appendingPathComponent("search.php").appending(queryItems: [URLQueryItem(name: "s", value: trimmed)])
-            ?? URL(string: baseURL.absoluteString + "search.php?s=\(encoded)")!
+        let url = try endpoint("search.php", queryItems: [URLQueryItem(name: "s", value: trimmed)])
         let remote: [DiscoveredRecipeSummary]
         do {
             let meals = try await fetchMeals(url: url)
@@ -179,7 +177,7 @@ actor MealDBClient {
     func filter(category: String) async throws -> [DiscoveredRecipeSummary] {
         let key = Self.listKey(category: category)
         if let cached = listCache[key] { return cached }
-        let url = URL(string: baseURL.absoluteString + "filter.php?c=\(category.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? category)")!
+        let url = try endpoint("filter.php", queryItems: [URLQueryItem(name: "c", value: category)])
         let meals = try await fetchMeals(url: url)
         let remote = meals.map { $0.asSummary(categoryHint: category) }
         let local = LocalMealCatalog.shared
@@ -194,8 +192,7 @@ actor MealDBClient {
         let key = Self.listKey(area: area)
         if let cached = listCache[key] { return cached }
         let local = LocalMealCatalog.filter(area: area)
-        let encoded = area.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? area
-        let url = URL(string: baseURL.absoluteString + "filter.php?a=\(encoded)")!
+        let url = try endpoint("filter.php", queryItems: [URLQueryItem(name: "a", value: area)])
         let remote: [DiscoveredRecipeSummary]
         do {
             let meals = try await fetchMeals(url: url)
@@ -225,7 +222,7 @@ actor MealDBClient {
         // Cards prefetch details for their times; share one request per meal.
         if let running = detailTasks[id] { return try await running.value }
 
-        let url = URL(string: baseURL.absoluteString + "lookup.php?i=\(id)")!
+        let url = try endpoint("lookup.php", queryItems: [URLQueryItem(name: "i", value: id)])
         let task = Task { [session] () throws -> DiscoveredRecipeDetail in
             let meals = try await Self.fetchMeals(url: url, session: session)
             guard let meal = meals.first else { throw MealDBError.empty }
@@ -240,8 +237,7 @@ actor MealDBClient {
 
     func areas() async throws -> [String] {
         if let cachedAreas { return cachedAreas }
-        let url = baseURL.appendingPathComponent("list.php").appending(queryItems: [URLQueryItem(name: "a", value: "list")])
-            ?? URL(string: baseURL.absoluteString + "list.php?a=list")!
+        let url = try endpoint("list.php", queryItems: [URLQueryItem(name: "a", value: "list")])
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw MealDBError.badResponse
@@ -258,8 +254,7 @@ actor MealDBClient {
 
     func categories() async throws -> [String] {
         if let cachedCategories { return cachedCategories }
-        let url = baseURL.appendingPathComponent("list.php").appending(queryItems: [URLQueryItem(name: "c", value: "list")])
-            ?? URL(string: baseURL.absoluteString + "list.php?c=list")!
+        let url = try endpoint("list.php", queryItems: [URLQueryItem(name: "c", value: "list")])
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw MealDBError.badResponse
@@ -272,6 +267,16 @@ actor MealDBClient {
         let list = (decoded.meals ?? []).compactMap(\.strCategory)
         if !list.isEmpty { cachedCategories = list }
         return list
+    }
+
+    /// Builds MealDB URLs with `URLQueryItem` values so query input is never string-interpolated.
+    private func endpoint(_ path: String, queryItems: [URLQueryItem]) throws -> URL {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
+            throw MealDBError.invalidURL
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else { throw MealDBError.invalidURL }
+        return url
     }
 
     private func fetchMeals(url: URL) async throws -> [MealDBMeal] {
@@ -420,10 +425,3 @@ private struct MealDBMeal: Decodable {
     }
 }
 
-private extension URL {
-    func appending(queryItems: [URLQueryItem]) -> URL? {
-        var components = URLComponents(url: self, resolvingAgainstBaseURL: false)
-        components?.queryItems = queryItems
-        return components?.url
-    }
-}
