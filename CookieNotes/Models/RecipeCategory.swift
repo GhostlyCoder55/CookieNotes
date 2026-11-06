@@ -13,7 +13,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
     case dessert
     case snack
     case drinks
-    case sides
 
     var id: String { rawValue }
 
@@ -26,7 +25,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
         case .dessert: "Dessert"
         case .snack: "Snack"
         case .drinks: "Drinks"
-        case .sides: "Sides"
         }
     }
 
@@ -39,7 +37,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
         case .dessert: AppTheme.warmBrown
         case .snack: AppTheme.goldenYellow
         case .drinks: AppTheme.brightOrange
-        case .sides: AppTheme.warmBrown
         }
     }
 
@@ -52,7 +49,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
         case .dessert: "berries_bowl"
         case .snack: "candy_bowl"
         case .drinks: "berry_smoothie"
-        case .sides: "rice_bowl"
         }
     }
 
@@ -84,8 +80,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
             return .breakfast
         case "dessert":
             return .dessert
-        case "starter", "side", "sides":
-            return .sides
         case "drink", "drinks", "beverage", "beverages":
             return .drinks
         case "snack", "snacks":

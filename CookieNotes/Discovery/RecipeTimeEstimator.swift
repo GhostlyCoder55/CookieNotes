@@ -121,8 +121,8 @@ enum RecipeTimeEstimator {
         case "beef", "lamb", "goat": 60
         case "pork": 45
         case "chicken": 40
-        case "seafood", "pasta", "side": 20
-        case "breakfast", "starter": 15
+        case "seafood", "pasta": 20
+        case "breakfast": 15
         case "dessert", "vegetarian", "vegan": 30
         default: 30
         }

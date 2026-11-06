@@ -41,7 +41,10 @@ struct RecipeDetailView: View {
         self.recipe = recipe
         _name = State(initialValue: recipe.name)
         _ingredients = State(initialValue: Self.lines(from: recipe))
-        _instructions = State(initialValue: recipe.instructions.map { EditableLine(text: $0) })
+        _instructions = State(
+            initialValue: RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
+                .map { EditableLine(text: $0) }
+        )
         _notes = State(initialValue: recipe.notes)
         _source = State(initialValue: recipe.source)
         _prepTime = State(initialValue: recipe.prepTime)
@@ -64,6 +67,10 @@ struct RecipeDetailView: View {
 
     private var photoCount: Int {
         visibleExistingPhotos.count + pendingPhotos.count
+    }
+
+    private var displayInstructions: [String] {
+        RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
     }
 
     private var sanitizedDraft: RecipeDraft {
@@ -272,7 +279,7 @@ struct RecipeDetailView: View {
             }
 
             readSection(title: "Instructions") {
-                ForEach(Array(recipe.instructions.enumerated()), id: \.offset) { index, instruction in
+                ForEach(Array(displayInstructions.enumerated()), id: \.offset) { index, instruction in
                     HStack(alignment: .top, spacing: 10) {
                         Text("\(index + 1)")
                             .font(AppTheme.smallCaption.weight(.bold))
@@ -423,7 +430,7 @@ struct RecipeDetailView: View {
     }
 
     private var cookModeView: some View {
-        let steps = recipe.instructions
+        let steps = displayInstructions
         return VStack(spacing: AppTheme.paddingLarge) {
             ProgressView(value: Double(cookStep + 1), total: Double(max(steps.count, 1)))
                 .tint(AppTheme.burntOrange)
@@ -551,7 +558,8 @@ struct RecipeDetailView: View {
         name = recipe.name
         ingredients = Self.lines(from: recipe)
         if ingredients.isEmpty { ingredients = [] }
-        instructions = recipe.instructions.isEmpty ? [EditableLine(text: "")] : recipe.instructions.map { EditableLine(text: $0) }
+        let cleanedInstructions = RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
+        instructions = cleanedInstructions.isEmpty ? [EditableLine(text: "")] : cleanedInstructions.map { EditableLine(text: $0) }
         notes = recipe.notes
         source = recipe.source
         prepTime = recipe.prepTime

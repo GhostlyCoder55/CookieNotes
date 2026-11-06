@@ -189,6 +189,7 @@ final class Recipe {
 
     var shareText: String {
         var lines: [String] = [name, ""]
+        let cleanInstructions = RecipeSanitizer.cleanInstructions(instructions, recipeName: name)
         var meta: [String] = []
         if totalTime > 0 {
             meta.append("Prep \(prepTime) min · Cook \(cookTime) min")
@@ -205,9 +206,9 @@ final class Recipe {
             lines.append(contentsOf: ingredients.map { "• \($0)" })
             lines.append("")
         }
-        if !instructions.isEmpty {
+        if !cleanInstructions.isEmpty {
             lines.append("Instructions")
-            for (index, step) in instructions.enumerated() {
+            for (index, step) in cleanInstructions.enumerated() {
                 lines.append("\(index + 1). \(step)")
             }
             lines.append("")

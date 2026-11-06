@@ -24,6 +24,19 @@ struct DiscoveredRecipeSummary: Identifiable, Hashable {
     }
 }
 
+struct CuisineArea: Hashable, Identifiable {
+    let name: String
+    let country: String
+
+    var id: String { name }
+    var region: CuisineRegion? { CuisineTaxonomy.region(forArea: name, country: country) }
+}
+
+private struct MealAreaResults: Sendable {
+    let recipes: [DiscoveredRecipeSummary]
+    let failed: Bool
+}
+
 struct DiscoveredRecipeDetail: Identifiable, Hashable {
     let id: String
     let name: String
@@ -82,8 +95,9 @@ enum MealDBError: LocalizedError {
 actor MealDBClient {
     static let shared = MealDBClient()
 
-    private var cachedAreas: [String]?
+    private var cachedCuisineAreas: [CuisineArea]?
     private var cachedCategories: [String]?
+    private var cachedIngredients: [String]?
     private var listCache: [String: [DiscoveredRecipeSummary]] = [:]
     private var detailCache: [String: DiscoveredRecipeDetail] = [:]
     private var detailTasks: [String: Task<DiscoveredRecipeDetail, Error>] = [:]
@@ -104,8 +118,16 @@ actor MealDBClient {
 
     static func listKey(category: String) -> String { "c:\(category.lowercased())" }
     static func listKey(area: String) -> String { "a:\(area.lowercased())" }
+    static func listKey(region: CuisineRegion) -> String { "r:\(region.rawValue.lowercased())" }
     static func listKey(search: String) -> String {
         "s:\(search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+    }
+
+    static func alphabeticallySorted(_ recipes: [DiscoveredRecipeSummary]) -> [DiscoveredRecipeSummary] {
+        recipes.sorted {
+            let comparison = $0.name.localizedStandardCompare($1.name)
+            return comparison == .orderedSame ? $0.id < $1.id : comparison == .orderedAscending
+        }
     }
 
     func timeEstimate(id: String) async -> RecipeTimeEstimate? {
@@ -141,21 +163,10 @@ actor MealDBClient {
         let key = Self.listKey(search: trimmed)
         if let cached = listCache[key] { return cached }
 
-        // Country / region queries (e.g. "Nigeria", "Thai") browse by area.
-        if let area = LocalMealCatalog.resolvedArea(for: trimmed) {
-            let results = try await filter(area: area)
-            listCache[key] = results
-            return results
-        }
-        if let area = await matchedRemoteArea(for: trimmed) {
-            let results = try await filter(area: area)
-            listCache[key] = results
-            return results
-        }
-
         let local = LocalMealCatalog.search(query: trimmed)
         let url = try endpoint("search.php", queryItems: [URLQueryItem(name: "s", value: trimmed)])
-        let remote: [DiscoveredRecipeSummary]
+        var matches = local
+        var nameSearchError: Error?
         do {
             let meals = try await fetchMeals(url: url)
             // search.php returns full meals — seed the detail cache so opening one is instant.
@@ -163,13 +174,40 @@ actor MealDBClient {
                 let detail = meal.asDetail
                 detailCache[detail.id] = detail
             }
-            remote = meals.map(\.asSummary)
+            matches += meals.map(\.asSummary)
         } catch {
-            if local.isEmpty { throw error }
-            // Offline: show local matches but don't cache them as the full answer.
-            return local
+            nameSearchError = error
+            AppLog.storage.error("MealDB name search failed; showing local matches")
         }
-        let results = Self.merging(local: local, remote: remote)
+
+        var matchedArea = LocalMealCatalog.resolvedArea(for: trimmed)
+        if matchedArea == nil {
+            matchedArea = await matchedRemoteArea(for: trimmed)
+        }
+        if let area = matchedArea {
+            do {
+                matches += try await filter(area: area)
+            } catch {
+                AppLog.storage.error("MealDB cuisine search failed")
+            }
+        }
+        if let category = await matchedRemoteCategory(for: trimmed) {
+            do {
+                matches += try await filter(category: category)
+            } catch {
+                AppLog.storage.error("MealDB category search failed")
+            }
+        }
+        if let ingredient = await matchedRemoteIngredient(for: trimmed) {
+            do {
+                matches += try await filter(ingredient: ingredient)
+            } catch {
+                AppLog.storage.error("MealDB ingredient search failed")
+            }
+        }
+
+        if matches.isEmpty, let nameSearchError { throw nameSearchError }
+        let results = Self.merging(local: [], remote: matches)
         listCache[key] = results
         return results
     }
@@ -210,7 +248,68 @@ actor MealDBClient {
             if local.isEmpty { throw error }
         }
         let results = Self.merging(local: local, remote: remote)
-        if !remote.isEmpty { listCache[key] = results }
+        listCache[key] = results
+        return results
+    }
+
+    func filter(region: CuisineRegion) async throws -> [DiscoveredRecipeSummary] {
+        let key = Self.listKey(region: region)
+        if let cached = listCache[key] { return cached }
+
+        let local = LocalMealCatalog.filter(region: region)
+        let areas = try await cuisineAreas()
+            .filter { $0.region == region }
+            .map(\.name)
+        guard !areas.isEmpty else {
+            let sorted = Self.alphabeticallySorted(local)
+            listCache[key] = sorted
+            return sorted
+        }
+
+        var nextAreaIndex = 0
+        var failedAreaCount = 0
+        var remote: [DiscoveredRecipeSummary] = []
+        await withTaskGroup(of: MealAreaResults.self) { group in
+            for _ in 0..<min(6, areas.count) {
+                let area = areas[nextAreaIndex]
+                nextAreaIndex += 1
+                group.addTask {
+                    do {
+                        return MealAreaResults(recipes: try await self.filter(area: area), failed: false)
+                    } catch {
+                        AppLog.storage.error("MealDB region lookup failed for \(area)")
+                        return MealAreaResults(recipes: [], failed: true)
+                    }
+                }
+            }
+
+            while let areaResults = await group.next() {
+                remote += areaResults.recipes
+                if areaResults.failed {
+                    failedAreaCount += 1
+                }
+                if nextAreaIndex < areas.count {
+                    let area = areas[nextAreaIndex]
+                    nextAreaIndex += 1
+                    group.addTask {
+                        do {
+                            return MealAreaResults(recipes: try await self.filter(area: area), failed: false)
+                        } catch {
+                            AppLog.storage.error("MealDB region lookup failed for \(area)")
+                            return MealAreaResults(recipes: [], failed: true)
+                        }
+                    }
+                }
+            }
+        }
+
+        if failedAreaCount == areas.count && local.isEmpty {
+            throw MealDBError.badResponse
+        }
+        let results = Self.alphabeticallySorted(Self.merging(local: local, remote: remote))
+        if failedAreaCount == 0 {
+            listCache[key] = results
+        }
         return results
     }
 
@@ -235,21 +334,27 @@ actor MealDBClient {
         return detail
     }
 
-    func areas() async throws -> [String] {
-        if let cachedAreas { return cachedAreas }
+    func cuisineAreas() async throws -> [CuisineArea] {
+        if let cachedCuisineAreas { return cachedCuisineAreas }
         let url = try endpoint("list.php", queryItems: [URLQueryItem(name: "a", value: "list")])
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw MealDBError.badResponse
         }
         struct ListEnvelope: Decodable {
-            struct Item: Decodable { let strArea: String? }
+            struct Item: Decodable {
+                let strArea: String?
+                let strCountry: String?
+            }
             let meals: [Item]?
         }
         let decoded = try JSONDecoder().decode(ListEnvelope.self, from: data)
-        let list = (decoded.meals ?? []).compactMap(\.strArea)
-        cachedAreas = list
-        return list
+        let catalog = (decoded.meals ?? []).compactMap { item -> CuisineArea? in
+            guard let name = item.strArea, !name.isEmpty else { return nil }
+            return CuisineArea(name: name, country: item.strCountry ?? "")
+        }
+        cachedCuisineAreas = catalog
+        return catalog
     }
 
     func categories() async throws -> [String] {
@@ -266,6 +371,28 @@ actor MealDBClient {
         let decoded = try JSONDecoder().decode(ListEnvelope.self, from: data)
         let list = (decoded.meals ?? []).compactMap(\.strCategory)
         if !list.isEmpty { cachedCategories = list }
+        return list
+    }
+
+    private func filter(ingredient: String) async throws -> [DiscoveredRecipeSummary] {
+        let url = try endpoint("filter.php", queryItems: [URLQueryItem(name: "i", value: ingredient)])
+        return try await fetchMeals(url: url).map { $0.asSummary }
+    }
+
+    private func ingredients() async throws -> [String] {
+        if let cachedIngredients { return cachedIngredients }
+        let url = try endpoint("list.php", queryItems: [URLQueryItem(name: "i", value: "list")])
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw MealDBError.badResponse
+        }
+        struct ListEnvelope: Decodable {
+            struct Item: Decodable { let strIngredient: String? }
+            let meals: [Item]?
+        }
+        let decoded = try JSONDecoder().decode(ListEnvelope.self, from: data)
+        let list = (decoded.meals ?? []).compactMap(\.strIngredient).filter { !$0.isEmpty }
+        cachedIngredients = list
         return list
     }
 
@@ -297,15 +424,60 @@ actor MealDBClient {
     }
 
     private func matchedRemoteArea(for query: String) async -> String? {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard trimmed.count >= 3 else { return nil }
-        let areas = (try? await areas()) ?? []
-        if let exact = areas.first(where: { $0.lowercased() == trimmed }) {
-            return exact
+        let normalized = CuisineTaxonomy.normalized(query)
+        guard normalized.count >= 3 else { return nil }
+        let catalog: [CuisineArea]
+        do {
+            catalog = try await cuisineAreas()
+        } catch {
+            AppLog.storage.error("MealDB cuisine index failed")
+            return nil
         }
-        // Prefer demonyms / country names that start with the query ("ghan" → Ghanaian).
-        return areas.first(where: { $0.lowercased().hasPrefix(trimmed) })
-            ?? areas.first(where: { $0.lowercased().contains(trimmed) })
+        if let exact = catalog.first(where: {
+            CuisineTaxonomy.normalized($0.name) == normalized
+                || CuisineTaxonomy.normalized($0.country) == normalized
+        }) {
+            return exact.name
+        }
+        return catalog.first(where: {
+            CuisineTaxonomy.normalized($0.name).hasPrefix(normalized)
+                || CuisineTaxonomy.normalized($0.country).hasPrefix(normalized)
+        })?.name
+    }
+
+    private func matchedRemoteCategory(for query: String) async -> String? {
+        let normalized = CuisineTaxonomy.normalized(query)
+        guard normalized.count >= 3 else { return nil }
+        let list: [String]
+        do {
+            list = try await categories()
+        } catch {
+            AppLog.storage.error("MealDB category index failed")
+            return nil
+        }
+        return list.first { CuisineTaxonomy.normalized($0) == normalized }
+    }
+
+    private func matchedRemoteIngredient(for query: String) async -> String? {
+        let normalizedTerms = CuisineTaxonomy.normalized(query)
+            .split(separator: " ")
+            .map(String.init)
+        guard !normalizedTerms.isEmpty,
+              normalizedTerms.count <= 2,
+              normalizedTerms.joined().count >= 4 else { return nil }
+        let list: [String]
+        do {
+            list = try await ingredients()
+        } catch {
+            AppLog.storage.error("MealDB ingredient index failed")
+            return nil
+        }
+        return list.first { ingredient in
+            let candidateTerms = CuisineTaxonomy.normalized(ingredient)
+                .split(separator: " ")
+                .map(String.init)
+            return normalizedTerms.allSatisfy { term in candidateTerms.contains { $0.hasPrefix(term) } }
+        }
     }
 
     private static func merging(local: [DiscoveredRecipeSummary], remote: [DiscoveredRecipeSummary]) -> [DiscoveredRecipeSummary] {
@@ -424,4 +596,3 @@ private struct MealDBMeal: Decodable {
         )
     }
 }
-

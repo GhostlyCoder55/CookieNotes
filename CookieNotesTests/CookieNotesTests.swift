@@ -72,6 +72,29 @@ struct RecipeLibraryTests {
         #expect(RecipeLibrary.prepare(recipes, sort: .newest).map(\.name) == ["Tomato Soup", "Banana Cake"])
     }
 
+    @Test func sideIsNoLongerARecipeCategoryOrFilter() {
+        #expect(!RecipeCategory.allCases.contains { $0.rawValue == "sides" })
+        #expect(!RecipeFilter.allCases.contains { $0.rawValue == "sides" })
+        #expect(RecipeCategory.inferred(fromMealDB: "Side") == .uncategorized)
+        #expect(RecipeCategory.inferred(fromMealDB: "Starter") == .uncategorized)
+        #expect(LocalMealCatalog.shared.allSatisfy {
+            !["side", "sides"].contains($0.category.lowercased())
+        })
+        #expect(LibraryFixture(
+            name: "Legacy side",
+            ingredients: [],
+            instructions: [],
+            notes: "",
+            source: "",
+            prepTime: 0,
+            cookTime: 0,
+            dateCreated: .distantPast,
+            dateModified: .distantPast,
+            hasPhotos: false,
+            categoryRaw: "sides"
+        ).category == .uncategorized)
+    }
+
     @Test func hidesSampleRecipesFromLibrary() {
         var sample = soup
         sample.isSample = true
@@ -145,6 +168,109 @@ struct SharedRecipeTests {
         #expect(cleaned.source == "Grandma")
         #expect(RecipeSanitizer.minutes(-4) == 0)
         #expect(RecipeSanitizer.minutes(10_000) == RecipeInputLimits.maxMinutes)
+    }
+
+    @Test func instructionFormattingRemovesDuplicateMarkersAndHeadings() {
+        let cleaned = RecipeSanitizer.cleanInstructions([
+            "STEP 1",
+            "0. Marinate the beef.",
+            "1. Heat the pan.",
+            "1 Put the fennel and aubergine in a roasting tray.",
+            "STEP 2: Add broth.",
+            "1",
+            "2",
+            "3",
+            "4.",
+            "Steps:",
+            "□",
+            "☐ Serve with sauce.",
+            "◻",
+            "7) Let rest before serving."
+        ])
+
+        #expect(cleaned == [
+            "Marinate the beef.",
+            "Heat the pan.",
+            "Put the fennel and aubergine in a roasting tray.",
+            "Add broth.",
+            "Serve with sauce.",
+            "Let rest before serving."
+        ])
+    }
+
+    @Test func karbonaderPlaceholderRowsAreReplacedWithMissingDirections() {
+        let name = "Karbonader (Lean Beef Patties) with Caramelized Onions"
+        let instructions = [
+            "Grate half an onion and set aside. Slice the rest of the onions and fry in butter on low/medium heat until caramelized.",
+            "☐",
+            "In a bowl, mix together ground beef, grated onion, salt, pepper, nutmeg, potato/corn starch, and water.",
+            "□",
+            "Form into a sausage and cut 6 patties. Using a knife make a light grid pattern in each patty.",
+            "☐",
+            "Brown both sides of the karbonader in butter on high heat, then turn down to low heat and fry for another 2-3 minutes.",
+            "☐",
+            "Serve the karbonader and onions with potatoes, stewed peas, and brown sauce for dinner."
+        ]
+
+        let cleaned = RecipeSanitizer.cleanInstructions(instructions, recipeName: name)
+        #expect(cleaned.count == 9)
+        #expect(cleaned[1].contains("Transfer the caramelized onions"))
+        #expect(cleaned[3].contains("Mix gently"))
+        #expect(cleaned[5].contains("even thickness"))
+        #expect(cleaned[7].contains("160°F"))
+        #expect(RecipeSanitizer.cleanInstructions(cleaned, recipeName: name) == cleaned)
+    }
+
+    @Test func bundledDiscoveryRecipesHaveNoNumberedInstructionPrefixes() {
+        for meal in LocalMealCatalog.shared {
+            let cleaned = RecipeSanitizer.cleanInstructions(meal.instructions)
+            #expect(cleaned == meal.instructions)
+        }
+    }
+
+    @Test func cuisineAliasesResolveCountryAndDemonymVariations() {
+        #expect(LocalMealCatalog.resolvedArea(for: "Japan") == "Japanese")
+        #expect(LocalMealCatalog.resolvedArea(for: "Japanese") == "Japanese")
+        #expect(LocalMealCatalog.resolvedArea(for: "Vietnam") == "Vietnamese")
+        #expect(LocalMealCatalog.resolvedArea(for: "Vietnamese") == "Vietnamese")
+        #expect(LocalMealCatalog.resolvedArea(for: "Yemen") == "Yemeni")
+        #expect(LocalMealCatalog.resolvedArea(for: "Yemeni") == "Yemeni")
+    }
+
+    @Test func localSearchScansRecipeTextAndCuisineMetadata() throws {
+        let jollof = try #require(LocalMealCatalog.shared.first { $0.id == "local-jollof-rice" })
+        #expect(jollof.matches(search: "rice"))
+        #expect(jollof.matches(search: "Nigeria"))
+        #expect(jollof.matches(search: "African"))
+        #expect(!jollof.matches(search: "Japanese"))
+    }
+
+    @Test func everyBundledCuisineOriginHasOneGeographicRegion() throws {
+        for area in Set(LocalMealCatalog.shared.map(\.area)) {
+            #expect(CuisineTaxonomy.region(forArea: area) != nil)
+        }
+        #expect(CuisineTaxonomy.region(forArea: "Japanese", country: "Japan") == .asian)
+        #expect(CuisineTaxonomy.region(forArea: "Yemeni", country: "Yemen") == .middleEastern)
+        #expect(LocalMealCatalog.filter(region: .african).contains { $0.area == "Nigerian" })
+        #expect(CuisineTaxonomy.regions == [
+            .african, .asian, .caribbean, .european, .middleEastern, .northAmerican, .oceania, .southAmerican
+        ])
+
+        let french = try #require(LocalMealCatalog.shared.first { $0.area == "French" })
+        let frenchDetail = try #require(LocalMealCatalog.detail(id: french.id))
+        #expect(frenchDetail.tags.contains("European"))
+        #expect(!frenchDetail.tags.contains("African"))
+    }
+
+    @Test func regionalRecipesAreAlphabeticalByMealName() {
+        let recipes = [
+            DiscoveredRecipeSummary(id: "3", name: "Jollof Rice", thumbnailURL: nil, category: nil, area: nil),
+            DiscoveredRecipeSummary(id: "1", name: "Apple Pie", thumbnailURL: nil, category: nil, area: nil),
+            DiscoveredRecipeSummary(id: "2", name: "Beef Stew", thumbnailURL: nil, category: nil, area: nil)
+        ]
+        #expect(MealDBClient.alphabeticallySorted(recipes).map(\.name) == [
+            "Apple Pie", "Beef Stew", "Jollof Rice"
+        ])
     }
 
     @Test func inboxRoundTripUsesTheProvidedFolder() throws {

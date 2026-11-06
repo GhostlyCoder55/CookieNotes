@@ -52,7 +52,6 @@ enum RecipeFilter: String, CaseIterable, Identifiable {
     case dessert
     case snack
     case drinks
-    case sides
 
     var id: String { rawValue }
 
@@ -66,7 +65,6 @@ enum RecipeFilter: String, CaseIterable, Identifiable {
         case .dessert: RecipeCategory.dessert.title
         case .snack: RecipeCategory.snack.title
         case .drinks: RecipeCategory.drinks.title
-        case .sides: RecipeCategory.sides.title
         }
     }
 
@@ -80,7 +78,6 @@ enum RecipeFilter: String, CaseIterable, Identifiable {
         case .dessert: .dessert
         case .snack: .snack
         case .drinks: .drinks
-        case .sides: .sides
         }
     }
 }
@@ -117,7 +114,7 @@ enum RecipeLibrary {
             return true
         case .favorites:
             return recipe.isFavorite
-        case .breakfast, .lunch, .dinner, .dessert, .snack, .drinks, .sides:
+        case .breakfast, .lunch, .dinner, .dessert, .snack, .drinks:
             return recipe.category == filter.mealCategory
         }
     }

@@ -6,60 +6,21 @@
 import SwiftData
 import SwiftUI
 
-private enum DiscoverBrowseChip: Hashable, Identifiable {
-    case category(String)
-    case area(String)
-
-    var id: String {
-        switch self {
-        case .category(let name): "c:\(name)"
-        case .area(let name): "a:\(name)"
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .category(let name), .area(let name): name
-        }
-    }
-}
-
 struct DiscoverView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var query = ""
     @State private var results: [DiscoveredRecipeSummary] = []
-    @State private var categories: [String] = ["Beef", "Breakfast", "Chicken", "Dessert", "Pasta", "Seafood", "Vegetarian"]
-    @State private var selectedChip: DiscoverBrowseChip? = .category("Beef")
+    @State private var selectedRegion: CuisineRegion? = .african
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var path = NavigationPath()
     @State private var searchGeneration = 0
     @State private var didLoadDefaultBrowse = false
 
-    /// Cuisine chips — local catalog fills West African + curated French / North American / Latino & islands.
-    private let cuisineAreas: [String] = [
-        // West Africa (local catalog)
-        "Nigerian", "Ghanaian", "Senegalese",
-        // French & North America
-        "French", "American", "Canadian", "Mexican",
-        // Latino & islands
-        "Jamaican", "Caribbean",
-        // Wider Africa
-        "Egyptian", "Moroccan", "Tunisian", "Kenyan",
-        // Asia (East + Southeast)
-        "Chinese", "Japanese", "Thai", "Vietnamese", "Malaysian", "Filipino",
-        // Middle East
-        "Turkish", "Syrian", "Saudi Arabian"
-    ]
-
     private let columns = [
         GridItem(.flexible(), spacing: 14),
         GridItem(.flexible(), spacing: 14)
     ]
-
-    private var browseChips: [DiscoverBrowseChip] {
-        categories.map(DiscoverBrowseChip.category) + cuisineAreas.map(DiscoverBrowseChip.area)
-    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -68,7 +29,7 @@ struct DiscoverView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
                         header
-                        categoryRow
+                        browseByRegion
                         content
                     }
                     .padding(AppTheme.paddingMedium)
@@ -101,7 +62,6 @@ struct DiscoverView: View {
                 }
             }
             .task {
-                await loadCategories()
                 await loadDefaultBrowseIfNeeded()
             }
         }
@@ -111,23 +71,24 @@ struct DiscoverView: View {
     private var header: some View {
         TitleSubtitleBlock(
             title: "Find something delicious",
-            subtitle: "Search by dish or country.",
             style: .page,
             alignment: .leading
         )
     }
 
-    private var categoryRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(browseChips) { chip in
-                    ColorChip(
-                        title: chip.title,
-                        selected: selectedChip == chip
-                    ) {
-                        selectedChip = chip
-                        query = ""
-                        Task { await runChip(chip) }
+    private var browseByRegion: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Browse by Region")
+                .font(AppTheme.sectionLabel)
+                .foregroundStyle(AppTheme.secondaryText)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(CuisineTaxonomy.regions) { region in
+                        ColorChip(title: region.rawValue, selected: selectedRegion == region) {
+                            selectedRegion = region
+                            query = ""
+                            Task { await runBrowse() }
+                        }
                     }
                 }
             }
@@ -173,42 +134,17 @@ struct DiscoverView: View {
     }
 
     private func retry() async {
-        if let selectedChip {
-            await runChip(selectedChip)
-        } else {
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             await runSearch(fromTyping: false)
+        } else {
+            await runBrowse()
         }
     }
 
-    private func loadCategories() async {
-        do {
-            let remote = try await MealDBClient.shared.categories()
-            if !remote.isEmpty {
-                // Prefer a balanced meal-type strip; cuisines are added separately.
-                let preferred = ["Beef", "Breakfast", "Chicken", "Dessert", "Pasta", "Seafood", "Vegetarian", "Vegan", "Lamb", "Pork"]
-                let ordered = preferred.filter { remote.contains($0) } + remote.filter { !preferred.contains($0) }
-                categories = Array(ordered.prefix(8))
-                if !categories.contains("Beef") {
-                    categories.insert("Beef", at: 0)
-                }
-            }
-        } catch {
-            // Keep curated defaults.
-        }
-    }
-
-    /// Open Discover on Beef with recipes already listed (no empty pizza state).
     private func loadDefaultBrowseIfNeeded() async {
         guard !didLoadDefaultBrowse else { return }
         didLoadDefaultBrowse = true
-        await browseDefaultBeef()
-    }
-
-    private func browseDefaultBeef() async {
-        let beef = DiscoverBrowseChip.category("Beef")
-        selectedChip = beef
-        query = ""
-        await runChip(beef)
+        await runBrowse()
     }
 
     private func scheduleLiveSearch(for raw: String) {
@@ -217,12 +153,11 @@ struct DiscoverView: View {
         let generation = searchGeneration
 
         if trimmed.isEmpty {
-            // Clearing a text search restores Beef. Chip taps set selectedChip first, then
-            // clear query — don't override those with Beef.
-            if selectedChip == nil {
+            if selectedRegion == nil {
                 Task {
                     guard generation == searchGeneration else { return }
-                    await browseDefaultBeef()
+                    selectedRegion = .african
+                    await runBrowse()
                 }
             }
             return
@@ -240,7 +175,7 @@ struct DiscoverView: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let generation = searchGeneration
-        selectedChip = nil
+        selectedRegion = nil
         errorMessage = nil
         if let cached = await MealDBClient.shared.cachedList(forKey: MealDBClient.listKey(search: trimmed)) {
             guard generation == searchGeneration else { return }
@@ -267,34 +202,17 @@ struct DiscoverView: View {
         }
     }
 
-    private func runChip(_ chip: DiscoverBrowseChip) async {
+    private func runBrowse() async {
+        guard let selectedRegion else { return }
         searchGeneration += 1
         let generation = searchGeneration
         errorMessage = nil
-        let key: String
-        switch chip {
-        case .category(let category): key = MealDBClient.listKey(category: category)
-        case .area(let area): key = MealDBClient.listKey(area: area)
-        }
-        if let cached = await MealDBClient.shared.cachedList(forKey: key) {
-            guard generation == searchGeneration else { return }
-            results = cached
-            isLoading = false
-            return
-        }
-
         isLoading = true
         defer {
             if generation == searchGeneration { isLoading = false }
         }
         do {
-            let found: [DiscoveredRecipeSummary]
-            switch chip {
-            case .category(let category):
-                found = try await MealDBClient.shared.filter(category: category)
-            case .area(let area):
-                found = try await MealDBClient.shared.filter(area: area)
-            }
+            let found = try await MealDBClient.shared.filter(region: selectedRegion)
             // A newer chip tap or search owns the grid now.
             guard generation == searchGeneration else { return }
             results = found
@@ -373,6 +291,11 @@ struct DiscoverDetailView: View {
     @State private var errorMessage: String?
     @State private var isSaving = false
 
+    private var displayInstructions: [String] {
+        guard let detail else { return [] }
+        return RecipeSanitizer.cleanInstructions(detail.instructions)
+    }
+
     var body: some View {
         ZStack {
             AppTheme.background.ignoresSafeArea()
@@ -426,7 +349,7 @@ struct DiscoverDetailView: View {
                         }
 
                         section(title: "Instructions") {
-                            ForEach(Array(detail.instructions.enumerated()), id: \.offset) { index, step in
+                            ForEach(Array(displayInstructions.enumerated()), id: \.offset) { index, step in
                                 HStack(alignment: .top, spacing: 10) {
                                     Text("\(index + 1)")
                                         .font(AppTheme.smallCaption.weight(.bold))
@@ -500,7 +423,7 @@ struct DiscoverDetailView: View {
         let recipe = Recipe(
             name: detail.name,
             ingredients: detail.ingredients,
-            instructions: detail.instructions,
+            instructions: RecipeSanitizer.cleanInstructions(detail.instructions),
             notes: "",
             source: detail.sourceURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
                 ? (detail.sourceURL ?? detail.attribution)
