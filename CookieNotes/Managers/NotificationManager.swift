@@ -39,7 +39,6 @@ class NotificationManager: ObservableObject {
             saveLastLoginDate()
         }
         clearLegacyNotificationsIfNeeded()
-        scheduleInactivityReminder()
     }
 
     static func shouldPrompt(lastLogin: Date?, now: Date, interval: TimeInterval) -> Bool {
@@ -82,7 +81,7 @@ class NotificationManager: ObservableObject {
 
         let content = UNMutableNotificationContent()
         content.title = "CookieNotes"
-        content.body = "Your cookbook is waiting. Open CookieNotes when you are ready to cook."
+        content.body = String.localized("Your cookbook is waiting. Open CookieNotes when you are ready to cook.")
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(

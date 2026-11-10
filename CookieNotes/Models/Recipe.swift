@@ -95,13 +95,12 @@ final class Recipe {
         resolvedCoverElements.first ?? category.iconName
     }
 
-    /// One or more icons for the cover — dinner/dessert/snack use a small dish cluster.
+    /// One or more icons for the cover — dinner/dessert use a small dish cluster.
     var resolvedCoverElements: [String] {
-        let dishCategories: Set<RecipeCategory> = [.dinner, .dessert, .snack]
+        let dishCategories: Set<RecipeCategory> = [.dinner, .dessert]
         let legacySingles: [RecipeCategory: Set<String>] = [
             .dinner: ["roast_chicken", "spaghetti_bowl", "plated_meal", "steak", "salmon_steak", "ribeye_steak", "soup_bowl"],
-            .dessert: ["cupcake"],
-            .snack: ["cookie"]
+            .dessert: ["cupcake"]
         ]
 
         if coverIconID.isEmpty {
@@ -139,32 +138,17 @@ final class Recipe {
         sortedPhotos.first?.thumbnailData
     }
 
-    /// Applies a meal category and its default cover illustration (used when there are no photos).
-    func applyCategoryCover(_ newCategory: RecipeCategory) {
-        category = newCategory
-        coverIconID = newCategory.preferredCoverIconID
-        usesCategoryCover = true
-    }
-
     var hasPhotos: Bool {
         !(photos ?? []).isEmpty
     }
 
-    var formattedPrepTime: String {
-        prepTime == 0 ? "No prep" : "\(prepTime) min prep"
-    }
-
-    var formattedCookTime: String {
-        cookTime == 0 ? "No cook" : "\(cookTime) min cook"
-    }
-
     var formattedTotalTime: String {
-        totalTime == 0 ? "Instant" : "\(RecipeTimeFormat.short(totalTime)) total"
+        totalTime == 0 ? String.localized("Instant") : String.localized("%@ total", RecipeTimeFormat.short(totalTime))
     }
 
     var formattedServings: String? {
         guard servings > 0 else { return nil }
-        return servings == 1 ? "1 serving" : "\(servings) servings"
+        return servings == 1 ? String.localized("1 serving") : String.localized("%lld servings", servings)
     }
 
     var accessibilitySummary: String {
@@ -173,16 +157,16 @@ final class Recipe {
             parts.append(formattedServings)
         }
         if !ingredients.isEmpty {
-            parts.append("\(ingredients.count) ingredients")
+            parts.append(String.localized("%lld ingredients", ingredients.count))
         }
         if isSample {
-            parts.append("example")
+            parts.append(String.localized("example"))
         }
         if isFavorite {
-            parts.append("favorite")
+            parts.append(String.localized("favorite"))
         }
         if hasPhotos {
-            parts.append("has photos")
+            parts.append(String.localized("has photos"))
         }
         return parts.joined(separator: ", ")
     }
@@ -192,7 +176,7 @@ final class Recipe {
         let cleanInstructions = RecipeSanitizer.cleanInstructions(instructions, recipeName: name)
         var meta: [String] = []
         if totalTime > 0 {
-            meta.append("Prep \(prepTime) min · Cook \(cookTime) min")
+            meta.append(String.localized("Prep %lld min · Cook %lld min", prepTime, cookTime))
         }
         if let formattedServings {
             meta.append(formattedServings)
@@ -202,24 +186,24 @@ final class Recipe {
             lines.append("")
         }
         if !ingredients.isEmpty {
-            lines.append("Ingredients")
+            lines.append(String.localized("Ingredients"))
             lines.append(contentsOf: ingredients.map { "• \($0)" })
             lines.append("")
         }
         if !cleanInstructions.isEmpty {
-            lines.append("Instructions")
+            lines.append(String.localized("Instructions"))
             for (index, step) in cleanInstructions.enumerated() {
                 lines.append("\(index + 1). \(step)")
             }
             lines.append("")
         }
         if !notes.isEmpty {
-            lines.append("Notes")
+            lines.append(String.localized("Notes"))
             lines.append(notes)
             lines.append("")
         }
         if !source.isEmpty {
-            lines.append("Source: \(source)")
+            lines.append(String.localized("Source: %@", source))
         }
         return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }

@@ -29,7 +29,7 @@ enum PersistenceController {
                 let configuration = ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)
                 return try ModelContainer(for: schema, configurations: configuration)
             } catch {
-                lastErrorMessage = "iCloud sync couldn't start. Recipes are still saved on this device."
+                lastErrorMessage = String.localized("iCloud sync couldn't start. Recipes are still saved on this device.")
                 AppLog.storage.error("CloudKit store was unavailable")
             }
         }
@@ -48,6 +48,7 @@ enum PersistenceController {
     }
 
     private static let purgedDemoRecipesKey = "cookienotes.didPurgeDemoRecipes"
+    private static let purgedExcludedV1Key = "cookienotes.didPurgeExcludedAndMigrateSnackV1"
 
     static func prepareLibrary(
         context: ModelContext,
@@ -56,6 +57,7 @@ enum PersistenceController {
     ) throws {
         try removeSampleRecipes(from: context)
         try removeLegacyDemoRecipes(from: context, defaults: defaults)
+        try purgeExcludedRecipesAndMigrateSnacks(from: context, defaults: defaults)
 
         if defaults.bool(forKey: initialSetupKey) {
             return
@@ -69,7 +71,7 @@ enum PersistenceController {
                 defaults.removeObject(forKey: legacyRecipesKey)
                 defaults.set(true, forKey: initialSetupKey)
             } catch {
-                lastErrorMessage = "Saved recipes could not be moved into the new library. Your previous copy was left untouched."
+                lastErrorMessage = String.localized("Saved recipes could not be moved into the new library. Your previous copy was left untouched.")
                 AppLog.storage.error("Legacy recipe migration failed")
                 throw error
             }
@@ -103,6 +105,7 @@ enum PersistenceController {
 
         // Bound string values — SwiftData compiles these into parameterized predicates.
         let friedRice = "Weeknight Fried Rice"
+        let friedRiceFr = "Riz frit de semaine"
         let cookies = "Chocolate Chip Cookies"
         let cambodian = "Cambodian Waffles"
         let numPoum = "Num Poum"
@@ -110,6 +113,7 @@ enum PersistenceController {
             FetchDescriptor<Recipe>(
                 predicate: #Predicate { recipe in
                     recipe.name == friedRice
+                        || recipe.name == friedRiceFr
                         || recipe.name == cookies
                         || recipe.name.localizedStandardContains(cambodian)
                         || recipe.name.localizedStandardContains(numPoum)
@@ -123,6 +127,31 @@ enum PersistenceController {
             try context.save()
         }
         defaults.set(true, forKey: purgedDemoRecipesKey)
+    }
+
+    /// Removes excluded Bouzgene recipes and migrates any legacy Snack category recipes to General.
+    private static func purgeExcludedRecipesAndMigrateSnacks(from context: ModelContext, defaults: UserDefaults) throws {
+        guard !defaults.bool(forKey: purgedExcludedV1Key) else { return }
+
+        let allRecipes = try context.fetch(FetchDescriptor<Recipe>())
+        var changed = false
+        for recipe in allRecipes {
+            let folded = recipe.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            if folded.contains("bouzgene") || recipe.source.contains("53284") {
+                context.delete(recipe)
+                changed = true
+            } else if recipe.categoryRaw.lowercased() == "snack" || recipe.categoryRaw.lowercased() == "snacks" {
+                recipe.categoryRaw = RecipeCategory.uncategorized.rawValue
+                changed = true
+            }
+        }
+        if defaults.string(forKey: "cookienotes.recipeFilter") == "snack" {
+            defaults.set(RecipeFilter.all.rawValue, forKey: "cookienotes.recipeFilter")
+        }
+        if changed {
+            try context.save()
+        }
+        defaults.set(true, forKey: purgedExcludedV1Key)
     }
 
     static let preview: ModelContainer = {

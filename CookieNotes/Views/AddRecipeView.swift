@@ -29,6 +29,7 @@ struct AddRecipeView: View {
     @State private var formError: String?
     @State private var showingIngredientPicker = false
     @State private var illustrationTargetID: UUID?
+    @State private var didSave = false
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -42,8 +43,8 @@ struct AddRecipeView: View {
                     VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
                         coverPicker
 
-                        RecipeFormSection(title: "Recipe Name") {
-                            TextField("Weeknight chili, banana bread…", text: $name)
+                        RecipeFormSection(title: String.localized("Recipe Name")) {
+                            TextField(String.localized("Weeknight chili, banana bread…"), text: $name)
                                 .textFieldStyle(CustomTextFieldStyle())
                                 .textInputAutocapitalization(.words)
                         }
@@ -52,9 +53,9 @@ struct AddRecipeView: View {
                         RecipeTimeRow(prepTime: $prepTime, cookTime: $cookTime, servings: $servings)
 
                         RecipeEditableLines(
-                            title: "Ingredients",
-                            addTitle: "Add",
-                            placeholder: "Ingredient",
+                            title: String.localized("Ingredients"),
+                            addTitle: String.localized("Add"),
+                            placeholder: String.localized("Ingredient"),
                             lines: $ingredients,
                             illustrated: true,
                             onPickIllustration: { lineID in
@@ -64,19 +65,19 @@ struct AddRecipeView: View {
                         )
 
                         RecipeEditableLines(
-                            title: "Instructions",
-                            addTitle: "Add Step",
-                            placeholder: "Write the step…",
+                            title: String.localized("Instructions"),
+                            addTitle: String.localized("Add Step"),
+                            placeholder: String.localized("Write the step…"),
                             lines: $instructions,
                             numbered: true
                         )
 
-                        RecipeFormSection(title: "Notes") {
+                        RecipeFormSection(title: String.localized("Notes")) {
                             NotesEditor(text: $notes)
                         }
 
-                        RecipeFormSection(title: "Source") {
-                            TextField("Optional link or where it came from", text: $source)
+                        RecipeFormSection(title: String.localized("Source")) {
+                            TextField(String.localized("Optional link or where it came from"), text: $source)
                                 .textFieldStyle(CustomTextFieldStyle())
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
@@ -88,22 +89,27 @@ struct AddRecipeView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
-            .navigationTitle("New Recipe")
+            .navigationTitle(String.localized("New Recipe"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String.localized("Cancel")) { dismiss() }
                         .foregroundStyle(AppTheme.secondaryText)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { saveRecipe() }
+                    Button(String.localized("Save")) { saveRecipe() }
                         .fontWeight(.semibold)
                         .foregroundStyle(canSave ? AppTheme.burntOrange : AppTheme.tertiaryText)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                         .disabled(!canSave)
                 }
             }
-            .alert("Couldn't save", isPresented: formAlertPresented) {
-                Button("OK", role: .cancel) { formError = nil }
+            .sensoryFeedback(.success, trigger: didSave)
+            .alert(String.localized("Couldn't save"), isPresented: formAlertPresented) {
+                Button(String.localized("OK"), role: .cancel) { formError = nil }
             } message: {
                 Text(formError ?? "")
             }
@@ -131,7 +137,7 @@ struct AddRecipeView: View {
     }
 
     private var coverPreviewElements: [String] {
-        let dish: Set<RecipeCategory> = [.dinner, .dessert, .snack]
+        let dish: Set<RecipeCategory> = [.dinner, .dessert]
         if dish.contains(category),
            coverIconID == category.preferredCoverIconID || coverIconID == "veggie_plate" {
             return category.coverElements
@@ -155,13 +161,13 @@ struct AddRecipeView: View {
             .background(AppTheme.parchment)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             VStack(alignment: .leading, spacing: 8) {
-                Text(coverImage == nil ? "Cover illustration" : "Cover photo")
+                Text(coverImage == nil ? String.localized("Cover illustration") : String.localized("Cover photo"))
                     .font(AppTheme.headline)
                     .foregroundStyle(AppTheme.primaryText)
                 Text(
                     coverImage == nil
-                        ? "Shown when you haven’t added photos. Pick a category vibe below."
-                        : "Your first photo is the cover. Remove all photos to use an illustration instead."
+                        ? String.localized("Shown when you haven’t added photos. Pick a category vibe below.")
+                        : String.localized("Your first photo is the cover. Remove all photos to use an illustration instead.")
                 )
                     .font(AppTheme.caption)
                     .foregroundStyle(AppTheme.secondaryText)
@@ -171,7 +177,7 @@ struct AddRecipeView: View {
     }
 
     private var categoryPicker: some View {
-        RecipeFormSection(title: "Category") {
+        RecipeFormSection(title: String.localized("Category")) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(RecipeCategory.allCases) { item in
@@ -195,14 +201,14 @@ struct AddRecipeView: View {
     }
 
     private var photoSection: some View {
-        RecipeFormSection(title: "Photos") {
+        RecipeFormSection(title: String.localized("Photos")) {
             HStack {
-                Text("\(photos.count) of \(RecipeInputLimits.photoCount)")
+                Text(String.localized("%lld of %lld", photos.count, RecipeInputLimits.photoCount))
                     .font(AppTheme.smallCaption)
                     .foregroundStyle(AppTheme.tertiaryText)
                 Spacer()
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                    Label("Add Photo", systemImage: "plus.circle.fill")
+                    Label(String.localized("Add Photo"), systemImage: "plus.circle.fill")
                         .font(AppTheme.caption.weight(.semibold))
                         .foregroundStyle(photos.count >= RecipeInputLimits.photoCount ? AppTheme.tertiaryText : AppTheme.burntOrange)
                         .frame(minHeight: 44)
@@ -215,12 +221,13 @@ struct AddRecipeView: View {
             }
 
             if photos.isEmpty {
-                Text("Optional dish photos")
+                Text(String.localized("Optional dish photos"))
                     .font(AppTheme.body)
                     .foregroundStyle(AppTheme.tertiaryText)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12)], spacing: 12) {
-                    ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+                    ForEach(photos) { photo in
+                        let index = photos.firstIndex(where: { $0.id == photo.id }) ?? 0
                         ZStack(alignment: .topTrailing) {
                             Button {
                                 viewerIndex = index
@@ -234,7 +241,8 @@ struct AddRecipeView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(CardButtonStyle())
+                            .accessibilityLabel(String.localized("View photo %lld", index + 1))
 
                             Button {
                                 photos.removeAll { $0.id == photo.id }
@@ -243,7 +251,9 @@ struct AddRecipeView: View {
                                     .foregroundStyle(AppTheme.error)
                                     .background(Circle().fill(AppTheme.elevatedHighlight))
                                     .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
+                            .accessibilityLabel(String.localized("Remove photo"))
                         }
                     }
                 }
@@ -256,7 +266,7 @@ struct AddRecipeView: View {
         guard photos.count < RecipeInputLimits.photoCount else { return }
         guard let data = try? await item.loadTransferable(type: Data.self),
               let stored = PhotoProcessing.makeStoredPhoto(from: data) else {
-            formError = "That photo couldn't be read. Try a different one."
+            formError = String.localized("That photo couldn't be read. Try a different one.")
             return
         }
         photos.append(PendingPhoto(stored: stored))
@@ -275,7 +285,15 @@ struct AddRecipeView: View {
         guard !draft.name.isEmpty else { return }
 
         let icons: [String] = {
-            var mapped = ingredients.map(\.iconID)
+            let nonEmptyLines = ingredients.filter {
+                !$0.text.replacingOccurrences(of: "\n", with: " ")
+                    .replacingOccurrences(of: "\r", with: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty
+            }
+            var mapped = nonEmptyLines.map { line in
+                line.iconID.isEmpty ? (IngredientCatalog.iconID(matching: line.text) ?? "") : line.iconID
+            }
             while mapped.count < draft.ingredients.count { mapped.append("") }
             return Array(mapped.prefix(draft.ingredients.count))
         }()
@@ -307,6 +325,7 @@ struct AddRecipeView: View {
 
         do {
             try modelContext.save()
+            didSave.toggle()
             NotificationManager.shared.markUserAsActive()
             dismiss()
             // Show toast after the sheet settles so it doesn’t fight the dismiss animation.
@@ -315,7 +334,7 @@ struct AddRecipeView: View {
                 InAppToast.shared.showRecipeAdded()
             }
         } catch {
-            formError = "The recipe couldn't be saved. Try again."
+            formError = String.localized("The recipe couldn't be saved. Try again.")
         }
     }
 }

@@ -66,15 +66,15 @@ enum RecipeSanitizer {
             instruction = removingPrefix(#"^\s*[☐□☑✓✔☒◻◼◽▫▪▢▣▯⬜]\s*"#, from: instruction)
             instruction = removingPrefix(#"^\s*(?:\d+[.)]|\(\d+\)|\[\d+\])\s+"#, from: instruction)
             instruction = removingPrefix(#"^\s*\d+\s+(?=[A-Z])"#, from: instruction, caseInsensitive: false)
-            instruction = removingPrefix(#"^\s*step\s*#?\s*\d+\s*[:.)-]\s*"#, from: instruction)
+            instruction = removingPrefix(#"^\s*(?:step|étape|etape)\s*#?\s*\d+\s*[:.)-]\s*"#, from: instruction)
             instruction = removingPrefix(#"^\s*[•*–—-]\s+"#, from: instruction)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if instruction == previous { break }
         }
 
         let headingPatterns = [
-            #"^(?:(?:#{1,6})\s*)?(?:steps?|instructions?|directions?|method)\s*:?\s*$"#,
-            #"^(?:(?:#{1,6})\s*)?step\s*#?\s*\d+\s*[:.)-]?\s*$"#
+            #"^(?:(?:#{1,6})\s*)?(?:steps?|instructions?|directions?|method|étapes?|etapes?|préparation|preparation)\s*:?\s*$"#,
+            #"^(?:(?:#{1,6})\s*)?(?:step|étape|etape)\s*#?\s*\d+\s*[:.)-]?\s*$"#
         ]
         guard !headingPatterns.contains(where: { matches($0, in: instruction) }) else { return nil }
         return instruction.isEmpty ? nil : instruction

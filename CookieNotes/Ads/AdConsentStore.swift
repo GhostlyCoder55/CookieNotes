@@ -16,9 +16,8 @@ enum AdConsentChoice: String, Equatable {
 
     var title: String {
         switch self {
-        case .unknown: "Not chosen"
-        case .allowed: "Ads on"
-        case .declined: "Ads off"
+        case .unknown, .allowed: String.localized("Ads on")
+        case .declined: String.localized("Ads off")
         }
     }
 }
@@ -27,9 +26,12 @@ enum AdConsentStore {
     static let key = "cookienotes.adConsent"
 
     static func choice(defaults: UserDefaults = .standard) -> AdConsentChoice {
-        let raw = defaults.string(forKey: key) ?? ""
+        guard let raw = defaults.string(forKey: key), !raw.isEmpty else {
+            // Show ads is on by default
+            return .allowed
+        }
         if let choice = AdConsentChoice(rawValue: raw) {
-            return choice
+            return choice == .unknown ? .allowed : choice
         }
         // Migrate older personalized / non-personalized / regional values.
         switch raw {
@@ -38,7 +40,7 @@ enum AdConsentStore {
         case "declined":
             return .declined
         default:
-            return .unknown
+            return .allowed
         }
     }
 

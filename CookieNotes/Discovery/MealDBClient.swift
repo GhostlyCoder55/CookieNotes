@@ -65,13 +65,17 @@ struct DiscoveredRecipeDetail: Identifiable, Hashable {
         if let sourceURL, sourceURL.contains("epicurious.com") {
             sourceLabel = "Epicurious"
         } else if isLocal {
-            sourceLabel = "CookieNotes kitchen"
+            sourceLabel = String.localized("CookieNotes kitchen")
         } else {
-            sourceLabel = "the meal database"
+            sourceLabel = String.localized("the meal database")
         }
         var parts = [sourceLabel]
-        if let area, !area.isEmpty { parts.append(area) }
-        if let category, !category.isEmpty { parts.append(category) }
+        if let area, !area.isEmpty {
+            parts.append(String.localized(area, defaultValue: area))
+        }
+        if let category, !category.isEmpty {
+            parts.append(String.localized(category, defaultValue: category))
+        }
         return parts.joined(separator: " · ")
     }
 }
@@ -84,10 +88,10 @@ enum MealDBError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL: "Could not build the recipe request."
-        case .badResponse: "The recipe service didn’t respond."
-        case .decoding: "Recipe data looked unexpected."
-        case .empty: "No recipes matched."
+        case .invalidURL: String.localized("Could not build the recipe request.")
+        case .badResponse: String.localized("The recipe service didn’t respond.")
+        case .decoding: String.localized("Recipe data looked unexpected.")
+        case .empty: String.localized("No recipes matched.")
         }
     }
 }
@@ -123,6 +127,17 @@ actor MealDBClient {
         "s:\(search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
     }
 
+    static func isExcluded(id: String?, name: String?) -> Bool {
+        if let id, id == "53284" { return true }
+        if let name {
+            let folded = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            if folded.contains("bouzgene") {
+                return true
+            }
+        }
+        return false
+    }
+
     static func alphabeticallySorted(_ recipes: [DiscoveredRecipeSummary]) -> [DiscoveredRecipeSummary] {
         recipes.sorted {
             let comparison = $0.name.localizedStandardCompare($1.name)
@@ -131,6 +146,7 @@ actor MealDBClient {
     }
 
     func timeEstimate(id: String) async -> RecipeTimeEstimate? {
+        if Self.isExcluded(id: id, name: nil) { return nil }
         if let cached = timeCache[id] { return cached }
         guard let detail = try? await lookup(id: id) else { return nil }
         let estimate = detail.timeEstimate
@@ -160,21 +176,26 @@ actor MealDBClient {
     func search(query: String) async throws -> [DiscoveredRecipeSummary] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let key = Self.listKey(search: trimmed)
+        let isFrench = AppLanguageManager.shared.activeLanguage == .french
+        let key = Self.listKey(search: trimmed) + (isFrench ? "_fr" : "_en")
         if let cached = listCache[key] { return cached }
 
         let local = LocalMealCatalog.search(query: trimmed)
+        let catalogFR = isFrench ? TheMealDBCatalog.search(query: trimmed) : []
         let url = try endpoint("search.php", queryItems: [URLQueryItem(name: "s", value: trimmed)])
-        var matches = local
+        var matches = local + catalogFR
         var nameSearchError: Error?
         do {
             let meals = try await fetchMeals(url: url)
             // search.php returns full meals — seed the detail cache so opening one is instant.
             for meal in meals {
+                guard !Self.isExcluded(id: meal.idMeal, name: meal.strMeal) else { continue }
                 let detail = meal.asDetail
-                detailCache[detail.id] = detail
+                let finalDetail = isFrench ? RecipeTranslator.translateDetail(detail) : detail
+                let detailKey = "\(finalDetail.id)_\(isFrench ? "fr" : "en")"
+                detailCache[detailKey] = finalDetail
             }
-            matches += meals.map(\.asSummary)
+            matches += meals.filter { !Self.isExcluded(id: $0.idMeal, name: $0.strMeal) }.map(\.asSummary)
         } catch {
             nameSearchError = error
             AppLog.storage.error("MealDB name search failed; showing local matches")
@@ -207,35 +228,41 @@ actor MealDBClient {
         }
 
         if matches.isEmpty, let nameSearchError { throw nameSearchError }
-        let results = Self.merging(local: [], remote: matches)
+        let excludedFiltered = matches.filter { !Self.isExcluded(id: $0.id, name: $0.name) }
+        let localizedResults = isFrench ? excludedFiltered.map(RecipeTranslator.translatedSummary) : excludedFiltered
+        let results = Self.merging(local: [], remote: localizedResults)
         listCache[key] = results
         return results
     }
 
     func filter(category: String) async throws -> [DiscoveredRecipeSummary] {
-        let key = Self.listKey(category: category)
+        let isFrench = AppLanguageManager.shared.activeLanguage == .french
+        let key = Self.listKey(category: category) + (isFrench ? "_fr" : "_en")
         if let cached = listCache[key] { return cached }
         let url = try endpoint("filter.php", queryItems: [URLQueryItem(name: "c", value: category)])
         let meals = try await fetchMeals(url: url)
-        let remote = meals.map { $0.asSummary(categoryHint: category) }
+        let remote = meals.filter { !Self.isExcluded(id: $0.idMeal, name: $0.strMeal) }.map { $0.asSummary(categoryHint: category) }
         let local = LocalMealCatalog.shared
             .filter { $0.category.caseInsensitiveCompare(category) == .orderedSame }
             .map(\.summary)
-        let results = Self.merging(local: local, remote: remote)
+        let merged = Self.merging(local: local, remote: remote)
+        let results = isFrench ? merged.map(RecipeTranslator.translatedSummary) : merged
         listCache[key] = results
         return results
     }
 
     func filter(area: String) async throws -> [DiscoveredRecipeSummary] {
-        let key = Self.listKey(area: area)
+        let isFrench = AppLanguageManager.shared.activeLanguage == .french
+        let key = Self.listKey(area: area) + (isFrench ? "_fr" : "_en")
         if let cached = listCache[key] { return cached }
         let local = LocalMealCatalog.filter(area: area)
         let url = try endpoint("filter.php", queryItems: [URLQueryItem(name: "a", value: area)])
         let remote: [DiscoveredRecipeSummary]
         do {
             let meals = try await fetchMeals(url: url)
-            remote = meals.map { meal in
-                DiscoveredRecipeSummary(
+            remote = meals.compactMap { meal in
+                guard !Self.isExcluded(id: meal.idMeal, name: meal.strMeal) else { return nil }
+                return DiscoveredRecipeSummary(
                     id: meal.idMeal ?? UUID().uuidString,
                     name: meal.strMeal ?? "Recipe",
                     thumbnailURL: URL(string: meal.strMealThumb ?? ""),
@@ -247,13 +274,15 @@ actor MealDBClient {
             remote = []
             if local.isEmpty { throw error }
         }
-        let results = Self.merging(local: local, remote: remote)
+        let merged = Self.merging(local: local, remote: remote)
+        let results = isFrench ? merged.map(RecipeTranslator.translatedSummary) : merged
         listCache[key] = results
         return results
     }
 
     func filter(region: CuisineRegion) async throws -> [DiscoveredRecipeSummary] {
-        let key = Self.listKey(region: region)
+        let isFrench = AppLanguageManager.shared.activeLanguage == .french
+        let key = Self.listKey(region: region) + (isFrench ? "_fr" : "_en")
         if let cached = listCache[key] { return cached }
 
         let local = LocalMealCatalog.filter(region: region)
@@ -262,8 +291,9 @@ actor MealDBClient {
             .map(\.name)
         guard !areas.isEmpty else {
             let sorted = Self.alphabeticallySorted(local)
-            listCache[key] = sorted
-            return sorted
+            let finalResults = isFrench ? sorted.map(RecipeTranslator.translatedSummary) : sorted
+            listCache[key] = finalResults
+            return finalResults
         }
 
         var nextAreaIndex = 0
@@ -306,7 +336,9 @@ actor MealDBClient {
         if failedAreaCount == areas.count && local.isEmpty {
             throw MealDBError.badResponse
         }
-        let results = Self.alphabeticallySorted(Self.merging(local: local, remote: remote))
+        let filteredRemote = remote.filter { !Self.isExcluded(id: $0.id, name: $0.name) }
+        let sorted = Self.alphabeticallySorted(Self.merging(local: local, remote: filteredRemote))
+        let results = isFrench ? sorted.map(RecipeTranslator.translatedSummary) : sorted
         if failedAreaCount == 0 {
             listCache[key] = results
         }
@@ -314,23 +346,52 @@ actor MealDBClient {
     }
 
     func lookup(id: String) async throws -> DiscoveredRecipeDetail {
+        if Self.isExcluded(id: id, name: nil) {
+            throw MealDBError.empty
+        }
         if let local = LocalMealCatalog.detail(id: id) {
             return local
         }
-        if let cached = detailCache[id] { return cached }
+        let isFrench = AppLanguageManager.shared.activeLanguage == .french
+        let cacheKey = "\(id)_\(isFrench ? "fr" : "en")"
+        if let cached = detailCache[cacheKey] { return cached }
         // Cards prefetch details for their times; share one request per meal.
-        if let running = detailTasks[id] { return try await running.value }
+        if let running = detailTasks[cacheKey] { return try await running.value }
 
         let url = try endpoint("lookup.php", queryItems: [URLQueryItem(name: "i", value: id)])
         let task = Task { [session] () throws -> DiscoveredRecipeDetail in
-            let meals = try await Self.fetchMeals(url: url, session: session)
-            guard let meal = meals.first else { throw MealDBError.empty }
-            return meal.asDetail
+            do {
+                let meals = try await Self.fetchMeals(url: url, session: session)
+                guard let meal = meals.first, !Self.isExcluded(id: meal.idMeal, name: meal.strMeal) else {
+                    throw MealDBError.empty
+                }
+                let detail = meal.asDetail
+                return isFrench ? RecipeTranslator.translateDetail(detail) : detail
+            } catch {
+                if isFrench,
+                   !Self.isExcluded(id: id, name: nil),
+                   let record = TheMealDBCatalog.record(for: id),
+                   !Self.isExcluded(id: record.id, name: record.name) {
+                    return DiscoveredRecipeDetail(
+                        id: record.id,
+                        name: record.name,
+                        category: record.category,
+                        area: record.area,
+                        instructions: RecipeSanitizer.cleanInstructions(record.instructions, recipeName: record.name),
+                        ingredients: record.ingredients,
+                        thumbnailURL: record.thumbnailURL.flatMap(URL.init(string:)),
+                        sourceURL: nil,
+                        youtubeURL: nil,
+                        tags: []
+                    )
+                }
+                throw error
+            }
         }
-        detailTasks[id] = task
-        defer { detailTasks[id] = nil }
+        detailTasks[cacheKey] = task
+        defer { detailTasks[cacheKey] = nil }
         let detail = try await task.value
-        detailCache[id] = detail
+        detailCache[cacheKey] = detail
         return detail
     }
 
@@ -376,7 +437,9 @@ actor MealDBClient {
 
     private func filter(ingredient: String) async throws -> [DiscoveredRecipeSummary] {
         let url = try endpoint("filter.php", queryItems: [URLQueryItem(name: "i", value: ingredient)])
-        return try await fetchMeals(url: url).map { $0.asSummary }
+        return try await fetchMeals(url: url)
+            .filter { !Self.isExcluded(id: $0.idMeal, name: $0.strMeal) }
+            .map { $0.asSummary }
     }
 
     private func ingredients() async throws -> [String] {
@@ -445,9 +508,38 @@ actor MealDBClient {
         })?.name
     }
 
+    private static let frenchCategoryAliases: [String: String] = [
+        "boeuf": "Beef",
+        "bœuf": "Beef",
+        "dejeuner": "Breakfast",
+        "déjeuner": "Breakfast",
+        "petit dejeuner": "Breakfast",
+        "petit déjeuner": "Breakfast",
+        "poulet": "Chicken",
+        "dessert": "Dessert",
+        "chevre": "Goat",
+        "chèvre": "Goat",
+        "agneau": "Lamb",
+        "divers": "Miscellaneous",
+        "pates": "Pasta",
+        "pâtes": "Pasta",
+        "porc": "Pork",
+        "fruits de mer": "Seafood",
+        "accompagnement": "Side",
+        "entree": "Starter",
+        "entrée": "Starter",
+        "vegan": "Vegan",
+        "végan": "Vegan",
+        "vegetarien": "Vegetarian",
+        "végétarien": "Vegetarian"
+    ]
+
     private func matchedRemoteCategory(for query: String) async -> String? {
         let normalized = CuisineTaxonomy.normalized(query)
         guard normalized.count >= 3 else { return nil }
+        if let mapped = Self.frenchCategoryAliases[normalized] {
+            return mapped
+        }
         let list: [String]
         do {
             list = try await categories()
@@ -481,11 +573,13 @@ actor MealDBClient {
     }
 
     private static func merging(local: [DiscoveredRecipeSummary], remote: [DiscoveredRecipeSummary]) -> [DiscoveredRecipeSummary] {
-        var seen = Set<String>()
+        var seenIDs = Set<String>()
+        var seenNames = Set<String>()
         var merged: [DiscoveredRecipeSummary] = []
         for item in local + remote {
-            let key = item.name.lowercased()
-            guard seen.insert(key).inserted else { continue }
+            let nameKey = item.name.lowercased()
+            guard seenIDs.insert(item.id).inserted else { continue }
+            guard seenNames.insert(nameKey).inserted else { continue }
             merged.append(item)
         }
         return merged

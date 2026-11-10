@@ -6,10 +6,22 @@
 import Foundation
 
 enum SharedRecipeBuilder {
-    static func draft(from payload: SharedRecipePayload) -> RecipeDraft {
+    private static func isFrench(defaults: UserDefaults?) -> Bool {
+        let code: String?
+        if let defaults {
+            code = defaults.string(forKey: "cookienotes.appLanguage")
+        } else {
+            code = UserDefaults(suiteName: "group.com.gc.CookieNotes")?.string(forKey: "cookienotes.appLanguage")
+                ?? UserDefaults.standard.string(forKey: "cookienotes.appLanguage")
+        }
+        return code?.hasPrefix("fr") == true
+    }
+
+    static func draft(from payload: SharedRecipePayload, defaults: UserDefaults? = nil) -> RecipeDraft {
         let parsed = RecipeTextParser.parse(payload.text)
         let title = payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let source = RecipeSanitizer.webURL(payload.url) ?? ""
+        let useFrench = isFrench(defaults: defaults)
 
         var name = title.isEmpty ? parsed.name : title
         if name.isEmpty || RecipeSanitizer.webURL(name) != nil {
@@ -18,12 +30,14 @@ enum SharedRecipeBuilder {
             }
         }
         if name.isEmpty {
-            name = "Saved recipe"
+            name = useFrench ? "Recette enregistrée" : "Saved recipe"
         }
 
         var notes = parsed.notes
         if parsed.ingredients.isEmpty && parsed.instructions.isEmpty && notes.isEmpty && !source.isEmpty {
-            notes = "Saved from the web. Add the ingredients and steps when you're ready."
+            notes = useFrench
+                ? "Enregistrée depuis le Web. Ajoutez les ingrédients et les étapes quand vous êtes prêt."
+                : "Saved from the web. Add the ingredients and steps when you're ready."
         }
 
         return RecipeSanitizer.clean(

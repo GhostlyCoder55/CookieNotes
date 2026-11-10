@@ -71,15 +71,26 @@ struct LocalMealRecord: Codable, Hashable, Identifiable {
 }
 
 enum LocalMealCatalog {
-    static let shared: [LocalMealRecord] = load()
+    private static let enMeals: [LocalMealRecord] = load(file: "LocalMealCatalog")
+    private static let frMeals: [LocalMealRecord] = load(file: "LocalMealCatalog_fr")
 
-    private static func load() -> [LocalMealRecord] {
-        guard let url = Bundle.main.url(forResource: "LocalMealCatalog", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(File.self, from: data) else {
-            return []
+    static var shared: [LocalMealRecord] {
+        AppLanguageManager.shared.activeLanguage == .french ? frMeals : enMeals
+    }
+
+    private static func load(file: String) -> [LocalMealRecord] {
+        let urls: [URL?] = [
+            Bundle.main.url(forResource: file, withExtension: "json"),
+            Bundle.main.url(forResource: file, withExtension: "json", subdirectory: "Resources")
+        ]
+        for case let url? in urls {
+            guard let data = try? Data(contentsOf: url),
+                  let decoded = try? JSONDecoder().decode(File.self, from: data) else {
+                continue
+            }
+            return decoded.meals
         }
-        return decoded.meals
+        return []
     }
 
     private struct File: Codable {
@@ -125,6 +136,19 @@ enum CuisineRegion: String, CaseIterable, Identifiable {
     case southAmerican = "South American"
 
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .african: return String.localized("African")
+        case .asian: return String.localized("Asian")
+        case .caribbean: return String.localized("Caribbean")
+        case .european: return String.localized("European")
+        case .middleEastern: return String.localized("Middle Eastern")
+        case .northAmerican: return String.localized("North American")
+        case .oceania: return String.localized("Oceania")
+        case .southAmerican: return String.localized("South American")
+        }
+    }
 }
 
 enum CuisineTaxonomy {
@@ -176,38 +200,50 @@ enum CuisineTaxonomy {
     static let regions = CuisineRegion.allCases
 
     private static let countryAndAreaAliases: [String: String] = [
-        "nigeria": "Nigerian", "nigerian": "Nigerian",
-        "ghana": "Ghanaian", "ghanaian": "Ghanaian",
-        "senegal": "Senegalese", "senegalese": "Senegalese",
-        "mali": "Malian", "malian": "Malian",
-        "cameroon": "Cameroonian", "cameroonian": "Cameroonian",
-        "ivory coast": "Ivorian", "cote d ivoire": "Ivorian", "ivorian": "Ivorian",
-        "gambia": "Gambian", "gambian": "Gambian",
-        "egypt": "Egyptian", "egyptian": "Egyptian",
-        "morocco": "Moroccan", "moroccan": "Moroccan",
-        "tunisia": "Tunisian", "tunisian": "Tunisian",
-        "kenya": "Kenyan", "kenyan": "Kenyan",
-        "china": "Chinese", "chinese": "Chinese",
-        "japan": "Japanese", "japanese": "Japanese",
-        "thailand": "Thai", "thai": "Thai",
-        "vietnam": "Vietnamese", "vietnamese": "Vietnamese",
-        "malaysia": "Malaysian", "malaysian": "Malaysian",
-        "philippines": "Filipino", "filipino": "Filipino",
-        "turkey": "Turkish", "turkish": "Turkish",
-        "syria": "Syrian", "syrian": "Syrian",
-        "yemen": "Yemeni", "yemeni": "Yemeni",
-        "saudi": "Saudi Arabian", "saudi arabia": "Saudi Arabian",
-        "india": "Indian", "indian": "Indian",
-        "mexico": "Mexican", "mexican": "Mexican",
-        "italy": "Italian", "italian": "Italian",
-        "france": "French", "french": "French",
-        "america": "American", "american": "American",
+        "algeria": "Algerian", "algerian": "Algerian", "algerie": "Algerian", "algerien": "Algerian", "algerienne": "Algerian",
+        "nigeria": "Nigerian", "nigerian": "Nigerian", "nigeriane": "Nigerian",
+        "ghana": "Ghanaian", "ghanaian": "Ghanaian", "ghaneen": "Ghanaian", "ghaneenne": "Ghanaian",
+        "senegal": "Senegalese", "senegalese": "Senegalese", "senegalais": "Senegalese", "senegalaise": "Senegalese",
+        "mali": "Malian", "malian": "Malian", "malien": "Malian", "malienne": "Malian",
+        "cameroon": "Cameroonian", "cameroonian": "Cameroonian", "camerounais": "Cameroonian", "camerounaise": "Cameroonian",
+        "ivory coast": "Ivorian", "cote d ivoire": "Ivorian", "ivorian": "Ivorian", "ivoirien": "Ivorian", "ivoirienne": "Ivorian",
+        "gambia": "Gambian", "gambian": "Gambian", "gambien": "Gambian",
+        "egypt": "Egyptian", "egyptian": "Egyptian", "egypte": "Egyptian", "egyptien": "Egyptian", "egyptienne": "Egyptian",
+        "morocco": "Moroccan", "moroccan": "Moroccan", "maroc": "Moroccan", "marocain": "Moroccan", "marocaine": "Moroccan",
+        "tunisia": "Tunisian", "tunisian": "Tunisian", "tunisie": "Tunisian", "tunisien": "Tunisian", "tunisienne": "Tunisian",
+        "kenya": "Kenyan", "kenyan": "Kenyan", "kenyanne": "Kenyan",
+        "china": "Chinese", "chinese": "Chinese", "chine": "Chinese", "chinois": "Chinese", "chinoise": "Chinese",
+        "japan": "Japanese", "japanese": "Japanese", "japon": "Japanese", "japonais": "Japanese", "japonaise": "Japanese",
+        "thailand": "Thai", "thai": "Thai", "thailande": "Thai", "thailandais": "Thai", "thailandaise": "Thai",
+        "vietnam": "Vietnamese", "vietnamese": "Vietnamese", "vietnamien": "Vietnamese", "vietnamienne": "Vietnamese",
+        "malaysia": "Malaysian", "malaysian": "Malaysian", "malaisie": "Malaysian", "malaisien": "Malaysian",
+        "philippines": "Filipino", "filipino": "Filipino", "philippin": "Filipino", "philippine": "Filipino",
+        "turkey": "Turkish", "turkish": "Turkish", "turquie": "Turkish", "turc": "Turkish", "turque": "Turkish",
+        "syria": "Syrian", "syrian": "Syrian", "syrie": "Syrian", "syrien": "Syrian",
+        "yemen": "Yemeni", "yemeni": "Yemeni", "yemenite": "Yemeni",
+        "saudi": "Saudi Arabian", "saudi arabia": "Saudi Arabian", "arabie saoudite": "Saudi Arabian", "saoudien": "Saudi Arabian",
+        "india": "Indian", "indian": "Indian", "inde": "Indian", "indien": "Indian", "indienne": "Indian",
+        "mexico": "Mexican", "mexican": "Mexican", "mexique": "Mexican", "mexicain": "Mexican", "mexicaine": "Mexican",
+        "italy": "Italian", "italian": "Italian", "italie": "Italian", "italien": "Italian", "italienne": "Italian",
+        "france": "French", "french": "French", "francais": "French", "francaise": "French",
+        "america": "American", "american": "American", "etats unis": "American", "etats-unis": "American", "americain": "American", "americaine": "American",
         "usa": "American", "united states": "American",
-        "canada": "Canadian", "canadian": "Canadian",
-        "jamaica": "Jamaican", "jamaican": "Jamaican",
-        "caribbean": "Caribbean", "puerto rico": "Puerto Rican",
-        "cuba": "Cuban", "haiti": "Haitian",
-        "uk": "British", "british": "British", "england": "British"
+        "canada": "Canadian", "canadian": "Canadian", "canadien": "Canadian", "canadienne": "Canadian",
+        "jamaica": "Jamaican", "jamaican": "Jamaican", "jamaique": "Jamaican", "jamaicain": "Jamaican", "jamaicaine": "Jamaican",
+        "caribbean": "Caribbean", "caraibes": "Caribbean", "caribeen": "Caribbean", "caribeenne": "Caribbean", "puerto rico": "Puerto Rican",
+        "cuba": "Cuban", "cubain": "Cuban", "cubaine": "Cuban", "haiti": "Haitian", "haitien": "Haitian", "haitienne": "Haitian",
+        "uk": "British", "british": "British", "england": "British", "britannique": "British", "angleterre": "British", "anglais": "British", "anglaise": "British",
+        "spain": "Spanish", "spanish": "Spanish", "espagne": "Spanish", "espagnol": "Spanish", "espagnole": "Spanish",
+        "greece": "Greek", "greek": "Greek", "grece": "Greek", "grec": "Greek", "grecque": "Greek",
+        "australia": "Australian", "australian": "Australian", "australie": "Australian", "australien": "Australian", "australienne": "Australian",
+        "croatia": "Croatian", "croatian": "Croatian", "croatie": "Croatian", "croate": "Croatian",
+        "ireland": "Irish", "irish": "Irish", "irlande": "Irish", "irlandais": "Irish", "irlandaise": "Irish",
+        "dutch": "Dutch", "holland": "Dutch", "netherlands": "Dutch", "pays bas": "Dutch", "neerlandais": "Dutch", "neerlandaise": "Dutch",
+        "poland": "Polish", "polish": "Polish", "pologne": "Polish", "polonais": "Polish", "polonaise": "Polish",
+        "portugal": "Portuguese", "portuguese": "Portuguese", "portugais": "Portuguese", "portugaise": "Portuguese",
+        "russia": "Russian", "russian": "Russian", "russie": "Russian", "russe": "Russian",
+        "ukraine": "Ukrainian", "ukrainian": "Ukrainian", "ukrainien": "Ukrainian", "ukrainienne": "Ukrainian",
+        "uruguay": "Uruguayan", "uruguayan": "Uruguayan", "uruguayen": "Uruguayan", "uruguayenne": "Uruguayan"
     ]
 
     private static let localAreaCountries: [String: String] = [
@@ -217,6 +253,7 @@ enum CuisineTaxonomy {
     ]
 
     private static let localAreaRegions: [String: CuisineRegion] = [
+        "algerian": .african,
         "american": .northAmerican, "canadian": .northAmerican, "mexican": .northAmerican,
         "french": .european, "ghanaian": .african, "nigerian": .african,
         "senegalese": .african, "jamaican": .caribbean, "caribbean": .caribbean,

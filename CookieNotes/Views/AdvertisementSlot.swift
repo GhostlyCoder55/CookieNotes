@@ -16,7 +16,7 @@ struct AdvertisementSlot: View {
     var body: some View {
         if ads.canPresentAds && AdConfiguration.current.mode != .disabled && !failed {
             VStack(alignment: .leading, spacing: 8) {
-                Text("ADVERTISEMENT")
+                Text(String.localized("ADVERTISEMENT"))
                     .font(AppTheme.smallCaption.weight(.bold))
                     .foregroundStyle(AppTheme.tertiaryText)
                     .tracking(0.6)
@@ -45,7 +45,7 @@ struct AdvertisementSlot: View {
                     .stroke(AppTheme.separator, lineWidth: 1)
             )
             .clipped()
-            .accessibilityLabel("Advertisement")
+            .accessibilityLabel(String.localized("Advertisement"))
             .accessibilityIdentifier("advertisement-slot-\(placementID)")
             .id("\(placementID)-\(ads.reloadToken)")
         }

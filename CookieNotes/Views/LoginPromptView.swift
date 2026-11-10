@@ -17,14 +17,15 @@ struct WelcomeBackPromptView: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 1).repeatForever(autoreverses: true), value: isAnimating)
 
             TitleSubtitleBlock(
-                title: "Welcome Back",
-                subtitle: "Your recipes are waiting. Add something new, discover online, or open a favorite.",
+                title: String.localized("Welcome Back"),
+                subtitle: String.localized("Your recipes are waiting. Add something new, discover online, or open a favorite."),
                 style: .page,
                 alignment: .center
             )
 
             if let lastLogin = notificationManager.lastLoginDate {
-                Text("Last visit: \(lastLogin, style: .date)")
+                let dateStr = lastLogin.formatted(date: .numeric, time: .omitted)
+                Text(String.localized("Last visit: %@", dateStr))
                     .font(AppTheme.caption)
                     .foregroundStyle(AppTheme.tertiaryText)
             }
@@ -32,12 +33,12 @@ struct WelcomeBackPromptView: View {
             Button {
                 notificationManager.markUserAsActive()
             } label: {
-                Label("Start Cooking", systemImage: "fork.knife")
+                Label(String.localized("Start Cooking"), systemImage: "fork.knife")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
 
-            Button("Maybe Later") {
+            Button(String.localized("Maybe Later")) {
                 notificationManager.dismissPrompt()
             }
             .foregroundStyle(AppTheme.secondaryText)
@@ -53,8 +54,6 @@ struct WelcomeBackPromptView: View {
     }
 }
 
-typealias LoginPromptView = WelcomeBackPromptView
-
 struct LoginPromptOverlay: View {
     @ObservedObject private var notificationManager = NotificationManager.shared
 
@@ -67,6 +66,7 @@ struct LoginPromptOverlay: View {
                 WelcomeBackPromptView(notificationManager: notificationManager)
                     .padding()
             }
+            .accessibilityAddTraits(.isModal)
         }
     }
 }

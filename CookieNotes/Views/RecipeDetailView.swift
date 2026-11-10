@@ -69,8 +69,33 @@ struct RecipeDetailView: View {
         visibleExistingPhotos.count + pendingPhotos.count
     }
 
+    private struct DisplayRow: Identifiable {
+        let id: String
+        let index: Int
+        let text: String
+    }
+
     private var displayInstructions: [String] {
-        RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
+        let cleaned = RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
+        if AppLanguageManager.shared.activeLanguage == .french {
+            return cleaned.map { RecipeTranslator.translateInstruction($0) }
+        }
+        return cleaned
+    }
+
+    private var displayIngredientRows: [DisplayRow] {
+        let items = AppLanguageManager.shared.activeLanguage == .french
+            ? recipe.ingredients.map { RecipeTranslator.translateIngredient($0) }
+            : recipe.ingredients
+        return items.enumerated().map { idx, text in
+            DisplayRow(id: "ing-\(idx)-\(text)", index: idx, text: text)
+        }
+    }
+
+    private var displayInstructionRows: [DisplayRow] {
+        displayInstructions.enumerated().map { idx, step in
+            DisplayRow(id: "step-\(idx)-\(step.prefix(24))", index: idx, text: step)
+        }
     }
 
     private var sanitizedDraft: RecipeDraft {
@@ -85,8 +110,18 @@ struct RecipeDetailView: View {
         )
     }
 
+    private var nonEmptyIngredientLines: [EditableLine] {
+        ingredients.filter {
+            !$0.text.replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        }
+    }
+
     private var hasChanges: Bool {
         let draft = sanitizedDraft
+        let existingIcons = recipe.ingredients.indices.map { recipe.iconID(forIngredientIndex: $0) }
         return draft.name != recipe.name
             || draft.ingredients != recipe.ingredients
             || draft.instructions != recipe.instructions
@@ -98,7 +133,7 @@ struct RecipeDetailView: View {
             || category != recipe.category
             || coverIconID != recipe.coverIconID
             || usesCategoryCover != recipe.usesCategoryCover
-            || ingredients.map(\.iconID) != recipe.ingredientIconIDs
+            || Array(nonEmptyIngredientLines.map(\.iconID).prefix(draft.ingredients.count)) != existingIcons
             || !removedPhotoIDs.isEmpty
             || !pendingPhotos.isEmpty
     }
@@ -107,7 +142,12 @@ struct RecipeDetailView: View {
         ZStack {
             AppTheme.background.ignoresSafeArea()
             if cookMode {
-                cookModeView
+                RecipeCookModeView(
+                    steps: displayInstructions,
+                    coverElements: recipe.resolvedCoverElements,
+                    cookStep: $cookStep,
+                    cookMode: $cookMode
+                )
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
@@ -125,17 +165,17 @@ struct RecipeDetailView: View {
                 .scrollDismissesKeyboard(.interactively)
             }
         }
-        .navigationTitle(isEditing ? "Edit Recipe" : "")
+        .navigationTitle(isEditing ? String.localized("Edit Recipe") : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
-        .alert("Delete Recipe", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive, action: deleteRecipe)
+        .alert(String.localized("Delete Recipe"), isPresented: $showingDeleteAlert) {
+            Button(String.localized("Cancel"), role: .cancel) {}
+            Button(String.localized("Delete"), role: .destructive, action: deleteRecipe)
         } message: {
-            Text("Delete \(recipe.name)? This can't be undone.")
+            Text(String.localized("Delete %@? This can't be undone.", recipe.name))
         }
-        .alert("Couldn't save", isPresented: saveAlertPresented) {
-            Button("OK", role: .cancel) { saveError = nil }
+        .alert(String.localized("Couldn't save"), isPresented: saveAlertPresented) {
+            Button(String.localized("OK"), role: .cancel) { saveError = nil }
         } message: {
             Text(saveError ?? "")
         }
@@ -155,6 +195,7 @@ struct RecipeDetailView: View {
                 illustrationTargetID = nil
             }
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: recipe.isFavorite)
         .preferredColorScheme(.dark)
     }
 
@@ -163,16 +204,22 @@ struct RecipeDetailView: View {
         ToolbarItem(placement: .topBarTrailing) {
             if isEditing {
                 HStack {
-                    Button("Cancel", action: cancelEditing)
+                    Button(String.localized("Cancel"), action: cancelEditing)
                         .foregroundStyle(AppTheme.secondaryText)
-                    Button("Save", action: saveChanges)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    Button(String.localized("Save"), action: saveChanges)
                         .fontWeight(.semibold)
                         .foregroundStyle(hasChanges && !sanitizedDraft.name.isEmpty ? AppTheme.burntOrange : AppTheme.tertiaryText)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                         .disabled(!hasChanges || sanitizedDraft.name.isEmpty)
                 }
             } else if cookMode {
-                Button("Done") { cookMode = false }
+                Button(String.localized("Done")) { cookMode = false }
                     .foregroundStyle(AppTheme.burntOrange)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
             } else {
                 HStack(spacing: 2) {
                     Button {
@@ -182,31 +229,38 @@ struct RecipeDetailView: View {
                         Image(systemName: recipe.isFavorite ? "heart.fill" : "heart")
                             .foregroundStyle(AppTheme.burntOrange)
                             .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
-                    .accessibilityLabel(recipe.isFavorite ? "Remove favorite" : "Add favorite")
+                    .accessibilityLabel(recipe.isFavorite ? String.localized("Remove favorite") : String.localized("Add favorite"))
 
                     ShareLink(item: recipe.shareText) {
                         Image(systemName: "square.and.arrow.up")
                             .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .foregroundStyle(AppTheme.accent)
+                    .accessibilityLabel(String.localized("Share recipe"))
 
-                    Button("Edit") { beginEditing() }
+                    Button(String.localized("Edit")) { beginEditing() }
                         .foregroundStyle(AppTheme.burntOrange)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
 
                     Menu {
-                        Button("Cook Mode") {
+                        Button(String.localized("Cook Mode")) {
                             cookStep = 0
                             cookMode = true
                         }
-                        Button("Delete", role: .destructive) {
+                        Button(String.localized("Delete"), role: .destructive) {
                             showingDeleteAlert = true
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .foregroundStyle(AppTheme.accent)
+                    .accessibilityLabel(String.localized("More options"))
                 }
             }
         }
@@ -246,6 +300,7 @@ struct RecipeDetailView: View {
                 Text(recipe.name)
                     .font(AppTheme.largeTitle)
                     .foregroundStyle(AppTheme.primaryText)
+                    .accessibilityAddTraits(.isHeader)
                 HStack(spacing: 10) {
                     Label(recipe.formattedTotalTime, systemImage: "clock")
                     if let servings = recipe.formattedServings {
@@ -262,40 +317,44 @@ struct RecipeDetailView: View {
             }
 
             HStack(spacing: 8) {
-                TimeInfoView(title: "Prep", time: recipe.prepTime)
-                TimeInfoView(title: "Cook", time: recipe.cookTime)
-                TimeInfoView(title: "Total", time: recipe.totalTime)
+                TimeInfoView(title: String.localized("Prep"), time: recipe.prepTime)
+                TimeInfoView(title: String.localized("Cook"), time: recipe.cookTime)
+                TimeInfoView(title: String.localized("Total"), time: recipe.totalTime)
             }
 
-            readSection(title: "Ingredients") {
-                ForEach(Array(recipe.ingredients.enumerated()), id: \.offset) { index, ingredient in
+            readSection(title: String.localized("Ingredients")) {
+                ForEach(displayIngredientRows) { row in
+                    let storedIcon = recipe.iconID(forIngredientIndex: row.index)
+                    let iconID = storedIcon.isEmpty ? (IngredientCatalog.iconID(matching: row.text) ?? "") : storedIcon
                     HStack(spacing: 12) {
-                        FoodIconView(iconID: recipe.iconID(forIngredientIndex: index), size: 40)
-                        Text(ingredient)
+                        FoodIconView(iconID: iconID, size: 40)
+                            .accessibilityHidden(true)
+                        Text(row.text)
                             .font(AppTheme.body)
                             .foregroundStyle(AppTheme.primaryText)
                     }
                 }
             }
 
-            readSection(title: "Instructions") {
-                ForEach(Array(displayInstructions.enumerated()), id: \.offset) { index, instruction in
+            readSection(title: String.localized("Instructions")) {
+                ForEach(displayInstructionRows) { row in
                     HStack(alignment: .top, spacing: 10) {
-                        Text("\(index + 1)")
+                        Text(verbatim: "\(row.index + 1)")
                             .font(AppTheme.smallCaption.weight(.bold))
                             .foregroundStyle(.white)
                             .frame(width: 26, height: 26)
                             .background(AppTheme.burntOrange)
                             .clipShape(Circle())
-                        Text(instruction)
+                        Text(row.text)
                             .font(AppTheme.body)
                             .foregroundStyle(AppTheme.primaryText)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
 
             if !recipe.notes.isEmpty {
-                readSection(title: "Notes") {
+                readSection(title: String.localized("Notes")) {
                     Text(recipe.notes)
                         .font(AppTheme.body)
                         .foregroundStyle(AppTheme.primaryText)
@@ -303,7 +362,7 @@ struct RecipeDetailView: View {
             }
 
             if !recipe.source.isEmpty {
-                readSection(title: "Source") {
+                readSection(title: String.localized("Source")) {
                     Text(recipe.source)
                         .font(AppTheme.body)
                         .foregroundStyle(AppTheme.secondaryText)
@@ -318,7 +377,7 @@ struct RecipeDetailView: View {
                 cookStep = 0
                 cookMode = true
             } label: {
-                Text("Start cooking")
+                Text(String.localized("Start cooking"))
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             .buttonStyle(PrimaryButtonStyle())
@@ -326,7 +385,7 @@ struct RecipeDetailView: View {
     }
 
     private var editCoverElements: [String] {
-        let dish: Set<RecipeCategory> = [.dinner, .dessert, .snack]
+        let dish: Set<RecipeCategory> = [.dinner, .dessert]
         if dish.contains(category),
            coverIconID == category.preferredCoverIconID || coverIconID.isEmpty {
             return category.coverElements
@@ -354,13 +413,13 @@ struct RecipeDetailView: View {
             .background(AppTheme.parchment)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
-                Text(coverPhoto == nil ? "Cover illustration" : "Cover photo")
+                Text(coverPhoto == nil ? String.localized("Cover illustration") : String.localized("Cover photo"))
                     .font(AppTheme.headline)
                     .foregroundStyle(AppTheme.primaryText)
                 Text(
                     coverPhoto == nil
-                        ? "Shown when this recipe has no photos. Pick a category to choose the illustration."
-                        : "Your first photo is the cover. Remove all photos to use an illustration instead."
+                        ? String.localized("Shown when this recipe has no photos. Pick a category to choose the illustration.")
+                        : String.localized("Your first photo is the cover. Remove all photos to use an illustration instead.")
                 )
                     .font(AppTheme.caption)
                     .foregroundStyle(AppTheme.secondaryText)
@@ -372,13 +431,13 @@ struct RecipeDetailView: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
-            RecipeFormSection(title: "Recipe Name") {
-                TextField("Recipe name", text: $name)
+            RecipeFormSection(title: String.localized("Recipe Name")) {
+                TextField(String.localized("Recipe name"), text: $name)
                     .textFieldStyle(CustomTextFieldStyle())
                     .font(AppTheme.title)
             }
 
-            RecipeFormSection(title: "Category") {
+            RecipeFormSection(title: String.localized("Category")) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(RecipeCategory.allCases) { item in
@@ -397,9 +456,9 @@ struct RecipeDetailView: View {
             RecipeTimeRow(prepTime: $prepTime, cookTime: $cookTime, servings: $servings)
 
             RecipeEditableLines(
-                title: "Ingredients",
-                addTitle: "Add",
-                placeholder: "Ingredient",
+                title: String.localized("Ingredients"),
+                addTitle: String.localized("Add"),
+                placeholder: String.localized("Ingredient"),
                 lines: $ingredients,
                 illustrated: true,
                 onPickIllustration: { lineID in
@@ -409,72 +468,23 @@ struct RecipeDetailView: View {
             )
 
             RecipeEditableLines(
-                title: "Instructions",
-                addTitle: "Add Step",
-                placeholder: "Write the step…",
+                title: String.localized("Instructions"),
+                addTitle: String.localized("Add Step"),
+                placeholder: String.localized("Write the step…"),
                 lines: $instructions,
                 numbered: true
             )
 
-            RecipeFormSection(title: "Notes") {
-                NotesEditor(text: $notes, placeholder: "A tip or a memory")
+            RecipeFormSection(title: String.localized("Notes")) {
+                NotesEditor(text: $notes, placeholder: String.localized("A tip or a memory"))
             }
 
-            RecipeFormSection(title: "Source") {
-                TextField("Optional link or where it came from", text: $source)
+            RecipeFormSection(title: String.localized("Source")) {
+                TextField(String.localized("Optional link or where it came from"), text: $source)
                     .textFieldStyle(CustomTextFieldStyle())
             }
 
             photoGallery(editable: true)
-        }
-    }
-
-    private var cookModeView: some View {
-        let steps = displayInstructions
-        return VStack(spacing: AppTheme.paddingLarge) {
-            ProgressView(value: Double(cookStep + 1), total: Double(max(steps.count, 1)))
-                .tint(AppTheme.burntOrange)
-                .padding(.horizontal)
-
-            Spacer()
-
-            if steps.indices.contains(cookStep) {
-                FoodIconView(iconIDs: recipe.resolvedCoverElements, size: 100)
-                Text("Step \(cookStep + 1) of \(steps.count)")
-                    .font(AppTheme.caption.weight(.bold))
-                    .foregroundStyle(AppTheme.accentAction)
-                Text(steps[cookStep])
-                    .font(AppTheme.title)
-                    .foregroundStyle(AppTheme.primaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, AppTheme.paddingLarge)
-            } else {
-                Text("You’re done!")
-                    .font(AppTheme.largeTitle)
-                    .foregroundStyle(AppTheme.primaryText)
-                FoodIconView(iconID: "cupcake", size: 120)
-            }
-
-            Spacer()
-
-            HStack(spacing: 16) {
-                Button("Previous") {
-                    cookStep = Swift.max(0, cookStep - 1)
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(cookStep == 0)
-
-                Button(cookStep >= steps.count - 1 ? "Finish" : "Next") {
-                    if cookStep >= steps.count - 1 {
-                        cookMode = false
-                    } else {
-                        cookStep += 1
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-            }
-            .padding(.horizontal, AppTheme.paddingLarge)
-            .padding(.bottom, AppTheme.paddingLarge)
         }
     }
 
@@ -483,16 +493,17 @@ struct RecipeDetailView: View {
             Text(title)
                 .font(AppTheme.sectionLabel)
                 .foregroundStyle(AppTheme.accent)
+                .accessibilityAddTraits(.isHeader)
             content()
         }
         .sectionSurface()
     }
 
     private func photoGallery(editable: Bool) -> some View {
-        RecipeFormSection(title: "Photos") {
+        RecipeFormSection(title: String.localized("Photos")) {
             if editable {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                    Label("Add Photo", systemImage: "plus.circle.fill")
+                    Label(String.localized("Add Photo"), systemImage: "plus.circle.fill")
                         .foregroundStyle(AppTheme.burntOrange)
                         .frame(minHeight: 44)
                 }
@@ -504,17 +515,19 @@ struct RecipeDetailView: View {
             }
 
             if photoCount == 0 {
-                Text("No photos yet")
+                Text(String.localized("No photos yet"))
                     .foregroundStyle(AppTheme.tertiaryText)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12)], spacing: 12) {
-                    ForEach(Array(visibleExistingPhotos.enumerated()), id: \.element.photoID) { index, photo in
-                        photoCell(imageData: photo.thumbnailData, index: index, removableID: photo.photoID)
+                    ForEach(visibleExistingPhotos, id: \.photoID) { photo in
+                        let idx = visibleExistingPhotos.firstIndex(where: { $0.photoID == photo.photoID }) ?? 0
+                        photoCell(imageData: photo.thumbnailData, index: idx, removableID: photo.photoID)
                     }
-                    ForEach(Array(pendingPhotos.enumerated()), id: \.element.id) { index, photo in
+                    ForEach(pendingPhotos) { photo in
+                        let idx = visibleExistingPhotos.count + (pendingPhotos.firstIndex(where: { $0.id == photo.id }) ?? 0)
                         photoCell(
                             imageData: photo.stored.thumbnailData,
-                            index: visibleExistingPhotos.count + index,
+                            index: idx,
                             removableID: nil,
                             pendingID: photo.id
                         )
@@ -538,7 +551,8 @@ struct RecipeDetailView: View {
                     .frame(width: 100, height: 100)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CardButtonStyle())
+            .accessibilityLabel(String.localized("View photo %lld", index + 1))
 
             if isEditing {
                 Button {
@@ -549,7 +563,9 @@ struct RecipeDetailView: View {
                         .foregroundStyle(AppTheme.error)
                         .background(Circle().fill(AppTheme.elevatedHighlight))
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .accessibilityLabel(String.localized("Remove photo"))
             }
         }
     }
@@ -584,7 +600,7 @@ struct RecipeDetailView: View {
         guard photoCount < RecipeInputLimits.photoCount else { return }
         guard let data = try? await item.loadTransferable(type: Data.self),
               let stored = PhotoProcessing.makeStoredPhoto(from: data) else {
-            saveError = "That photo couldn't be read. Try a different one."
+            saveError = String.localized("That photo couldn't be read. Try a different one.")
             return
         }
         pendingPhotos.append(PendingPhoto(stored: stored))
@@ -605,7 +621,13 @@ struct RecipeDetailView: View {
         recipe.coverIconID = coverIconID
         recipe.usesCategoryCover = usesCategoryCover
         recipe.syncIngredientIcons(from: {
-            var lines = ingredients
+            var lines = nonEmptyIngredientLines.map { line in
+                EditableLine(
+                    id: line.id,
+                    text: line.text,
+                    iconID: line.iconID.isEmpty ? (IngredientCatalog.iconID(matching: line.text) ?? "") : line.iconID
+                )
+            }
             while lines.count < draft.ingredients.count {
                 lines.append(EditableLine(text: ""))
             }
@@ -638,7 +660,7 @@ struct RecipeDetailView: View {
             pendingPhotos.removeAll()
             isEditing = false
         } catch {
-            saveError = "The recipe couldn't be saved. Try again."
+            saveError = String.localized("The recipe couldn't be saved. Try again.")
         }
     }
 
@@ -649,7 +671,7 @@ struct RecipeDetailView: View {
             NotificationManager.shared.markUserAsActive()
             dismiss()
         } catch {
-            saveError = "The recipe couldn't be deleted. Try again."
+            saveError = String.localized("The recipe couldn't be deleted. Try again.")
         }
     }
 }
@@ -663,7 +685,7 @@ struct TimeInfoView: View {
             Text(title)
                 .font(AppTheme.smallCaption)
                 .foregroundStyle(AppTheme.tertiaryText)
-            Text(time == 0 ? "None" : RecipeTimeFormat.short(time))
+            Text(time == 0 ? String.localized("None") : RecipeTimeFormat.short(time))
                 .font(AppTheme.headline)
                 .foregroundStyle(AppTheme.primaryText)
                 .lineLimit(1)
@@ -673,27 +695,100 @@ struct TimeInfoView: View {
         .padding(.vertical, 10)
         .background(AppTheme.surfaceBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct RecipeCookModeView: View {
+    let steps: [String]
+    let coverElements: [String]
+    @Binding var cookStep: Int
+    @Binding var cookMode: Bool
+
+    var body: some View {
+        VStack(spacing: AppTheme.paddingLarge) {
+            ProgressView(value: Double(cookStep + 1), total: Double(max(steps.count, 1)))
+                .tint(AppTheme.burntOrange)
+                .padding(.horizontal)
+
+            Spacer()
+
+            if steps.indices.contains(cookStep) {
+                FoodIconView(iconIDs: coverElements, size: 100)
+                    .accessibilityHidden(true)
+                Text(String.localized("Step %lld of %lld", cookStep + 1, steps.count))
+                    .font(AppTheme.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.accentAction)
+                Text(steps[cookStep])
+                    .font(AppTheme.title)
+                    .foregroundStyle(AppTheme.primaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppTheme.paddingLarge)
+            } else {
+                Text(String.localized("You’re done!"))
+                    .font(AppTheme.largeTitle)
+                    .foregroundStyle(AppTheme.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                FoodIconView(iconID: "cupcake", size: 120)
+                    .accessibilityHidden(true)
+            }
+
+            Spacer()
+
+            HStack(spacing: 16) {
+                Button(String.localized("Previous")) {
+                    cookStep = Swift.max(0, cookStep - 1)
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .disabled(cookStep == 0)
+
+                Button(cookStep >= steps.count - 1 ? String.localized("Finish") : String.localized("Next")) {
+                    if cookStep >= steps.count - 1 {
+                        cookMode = false
+                    } else {
+                        cookStep += 1
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+            .padding(.horizontal, AppTheme.paddingLarge)
+            .padding(.bottom, AppTheme.paddingLarge)
+        }
+        .sensoryFeedback(.selection, trigger: cookStep)
     }
 }
 
 struct PhotoViewerView: View {
     @Environment(\.dismiss) private var dismiss
     let photos: [Data]
+    // Seeded intentionally as initial page when modal opens.
     @State private var selectedIndex: Int
+
+    private struct PhotoPage: Identifiable {
+        let id: String
+        let index: Int
+        let data: Data
+    }
 
     init(photos: [Data], selectedIndex: Int) {
         self.photos = photos
         _selectedIndex = State(initialValue: selectedIndex)
     }
 
+    private var pages: [PhotoPage] {
+        photos.enumerated().map { idx, data in
+            PhotoPage(id: "photo-\(idx)-\(data.count)", index: idx, data: data)
+        }
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             TabView(selection: $selectedIndex) {
-                ForEach(photos.indices, id: \.self) { index in
-                    if let image = UIImage(data: photos[index]) {
+                ForEach(pages) { page in
+                    if let image = UIImage(data: page.data) {
                         ZoomableImageView(image: image)
-                            .tag(index)
+                            .tag(page.index)
                     }
                 }
             }
@@ -707,7 +802,9 @@ struct PhotoViewerView: View {
                             .font(.title)
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
+                    .accessibilityLabel(String.localized("Close"))
                     .padding()
                 }
                 Spacer()
@@ -718,6 +815,7 @@ struct PhotoViewerView: View {
 
 struct ZoomableImageView: View {
     let image: UIImage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
 
@@ -736,7 +834,12 @@ struct ZoomableImageView: View {
                     .onEnded { _ in lastScale = 1 }
             )
             .onTapGesture(count: 2) {
-                withAnimation { scale = scale > 1 ? 1 : 2 }
+                let targetScale: CGFloat = scale > 1 ? 1 : 2
+                if reduceMotion {
+                    scale = targetScale
+                } else {
+                    withAnimation { scale = targetScale }
+                }
             }
     }
 }

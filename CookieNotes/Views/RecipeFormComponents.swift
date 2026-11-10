@@ -17,12 +17,14 @@ struct RecipeFormSection<Content: View>: View {
                 Text(title)
                     .font(AppTheme.sectionLabel)
                     .foregroundStyle(AppTheme.burntOrange)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
                 if let actionTitle, let action {
                     Button(actionTitle, action: action)
                         .font(AppTheme.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.burntOrange)
                         .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
             }
             content()
@@ -49,7 +51,7 @@ struct RecipeEditableLines: View {
             action: addLine
         ) {
             if lines.isEmpty {
-                Text("Tap \(addTitle) to start writing.")
+                Text(String.localized("Tap %@ to start writing.", addTitle))
                     .font(AppTheme.caption)
                     .foregroundStyle(AppTheme.tertiaryText)
             }
@@ -74,9 +76,9 @@ struct RecipeEditableLines: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Choose ingredient")
+                        .accessibilityLabel(String.localized("Choose ingredient"))
                     } else if numbered {
-                        Text("\(lineNumber(for: line.id)).")
+                        Text(verbatim: "\(lineNumber(for: line.id)).")
                             .font(AppTheme.body.weight(.bold))
                             .foregroundStyle(AppTheme.burntOrange)
                             .frame(width: 28, alignment: .leading)
@@ -99,7 +101,7 @@ struct RecipeEditableLines: View {
                                 .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Remove \(placeholder.lowercased())")
+                        .accessibilityLabel(String.localized("Remove %@", placeholder.lowercased()))
                     }
                 }
             }
@@ -114,7 +116,8 @@ struct RecipeEditableLines: View {
     private func addLine() {
         let line = EditableLine(text: "")
         lines.append(line)
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            await Task.yield()
             focusedLineID = line.id
         }
     }
@@ -122,7 +125,8 @@ struct RecipeEditableLines: View {
     private func removeLine(id: UUID) {
         // Clear focus before mutating so TextField bindings are not torn down mid-update.
         focusedLineID = nil
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            await Task.yield()
             guard lines.count > 1 else { return }
             lines.removeAll { $0.id == id }
             if lines.isEmpty {
@@ -143,9 +147,9 @@ struct RecipeTimeRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: AppTheme.paddingSmall) {
-            TimeInputView(title: "Prep", value: $prepTime, step: 1)
-            TimeInputView(title: "Cook", value: $cookTime, step: 1)
-            TimeInputView(title: "Serves", value: $servings, unit: "", step: 1, maxValue: RecipeInputLimits.maxServings)
+            TimeInputView(title: String.localized("Prep"), value: $prepTime, unit: String.localized("min"), step: 1)
+            TimeInputView(title: String.localized("Cook"), value: $cookTime, unit: String.localized("min"), step: 1)
+            TimeInputView(title: String.localized("Serves"), value: $servings, unit: "", step: 1, maxValue: RecipeInputLimits.maxServings)
         }
     }
 }
@@ -169,14 +173,15 @@ struct TimeInputView: View {
                 } label: {
                     Image(systemName: "minus.circle.fill")
                         .foregroundStyle(value <= 0 ? AppTheme.tertiaryText : AppTheme.burntOrange)
-                        .frame(width: 40, height: 44)
+                        .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(value <= 0)
+                .accessibilityLabel(String.localized("Decrease %@", title.lowercased()))
 
                 VStack(spacing: 0) {
-                    Text("\(value)")
+                    Text(verbatim: "\(value)")
                         .font(AppTheme.caption.weight(.bold))
                         .foregroundStyle(AppTheme.primaryText)
                         .lineLimit(1)
@@ -191,17 +196,19 @@ struct TimeInputView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
                 .multilineTextAlignment(.center)
+                .accessibilityElement(children: .combine)
 
                 Button {
                     value = Swift.min(maxValue, value + step)
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .foregroundStyle(value >= maxValue ? AppTheme.tertiaryText : AppTheme.burntOrange)
-                        .frame(width: 40, height: 44)
+                        .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(value >= maxValue)
+                .accessibilityLabel(String.localized("Increase %@", title.lowercased()))
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity)
@@ -209,5 +216,6 @@ struct TimeInputView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sensoryFeedback(.selection, trigger: value)
     }
 }

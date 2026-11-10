@@ -11,20 +11,18 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
     case lunch
     case dinner
     case dessert
-    case snack
     case drinks
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .uncategorized: "General"
-        case .breakfast: "Breakfast"
-        case .lunch: "Lunch"
-        case .dinner: "Dinner"
-        case .dessert: "Dessert"
-        case .snack: "Snack"
-        case .drinks: "Drinks"
+        case .uncategorized: String.localized("General")
+        case .breakfast: String.localized("Breakfast")
+        case .lunch: String.localized("Lunch")
+        case .dinner: String.localized("Dinner")
+        case .dessert: String.localized("Dessert")
+        case .drinks: String.localized("Drinks")
         }
     }
 
@@ -35,7 +33,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
         case .lunch: AppTheme.leafGreen
         case .dinner: AppTheme.burntOrange
         case .dessert: AppTheme.warmBrown
-        case .snack: AppTheme.goldenYellow
         case .drinks: AppTheme.brightOrange
         }
     }
@@ -47,7 +44,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
         case .lunch: "salad_bowl"
         case .dinner: "soup_bowl"
         case .dessert: "berries_bowl"
-        case .snack: "candy_bowl"
         case .drinks: "berry_smoothie"
         }
     }
@@ -59,8 +55,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
             return ["soup_bowl"]
         case .dessert:
             return ["strawberry", "ice_cream", "cupcake"]
-        case .snack:
-            return ["chips", "donut", "cookie"]
         default:
             return [iconName]
         }
@@ -82,8 +76,6 @@ enum RecipeCategory: String, CaseIterable, Identifiable, Codable {
             return .dessert
         case "drink", "drinks", "beverage", "beverages":
             return .drinks
-        case "snack", "snacks":
-            return .snack
         case "vegetarian", "vegan":
             return .lunch
         case "chicken", "beef", "pork", "lamb", "goat", "seafood", "pasta", "miscellaneous":

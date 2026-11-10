@@ -868,6 +868,12 @@ struct FoodIconView: View {
     }
 }
 
+private struct StackedDishPiece: Identifiable {
+    let id: String
+    let iconID: String
+    let index: Int
+}
+
 /// Overlapping cluster of food icons so category covers feel like a full dish.
 /// Icons are listed back → front and stacked so rear pieces weave forward into the pile.
 struct DishCoverView: View {
@@ -875,11 +881,14 @@ struct DishCoverView: View {
     var size: CGFloat = 96
 
     var body: some View {
-        let icons = Array(iconIDs.filter { !$0.isEmpty }.prefix(3))
+        let filtered = Array(iconIDs.filter { !$0.isEmpty }.prefix(3))
+        let pieces = filtered.enumerated().map { index, iconID in
+            StackedDishPiece(id: "\(index)-\(iconID)", iconID: iconID, index: index)
+        }
 
         ZStack {
-            ForEach(Array(icons.enumerated()), id: \.offset) { index, id in
-                stackedPiece(id: id, index: index, count: icons.count)
+            ForEach(pieces) { piece in
+                stackedPiece(id: piece.iconID, index: piece.index, count: pieces.count)
             }
         }
         .frame(width: size, height: size)

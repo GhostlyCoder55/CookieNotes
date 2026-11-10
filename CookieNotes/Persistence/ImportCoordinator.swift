@@ -30,6 +30,7 @@ final class ImportCoordinator: ObservableObject {
             let draft = SharedRecipeBuilder.draft(from: payload)
             guard !draft.name.isEmpty else { continue }
 
+            let iconIDs = draft.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
             let recipe = Recipe(
                 name: draft.name,
                 ingredients: draft.ingredients,
@@ -37,7 +38,8 @@ final class ImportCoordinator: ObservableObject {
                 notes: draft.notes,
                 source: draft.source,
                 servings: draft.servings,
-                isImported: true
+                isImported: true,
+                ingredientIconIDs: iconIDs
             )
             context.insert(recipe)
 
@@ -56,7 +58,7 @@ final class ImportCoordinator: ObservableObject {
                 try context.save()
             }
         } catch {
-            bannerMessage = "A shared recipe couldn't be saved."
+            bannerMessage = String.localized("A shared recipe couldn't be saved.")
             AppLog.storage.error("Shared recipe save failed")
             return
         }

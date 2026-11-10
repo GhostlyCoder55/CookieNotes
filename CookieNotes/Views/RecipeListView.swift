@@ -70,27 +70,30 @@ struct RecipeListView: View {
             .overlay(alignment: .top) {
                 InAppToastOverlay()
             }
-            .navigationTitle("Library")
+            .navigationTitle(String.localized("Library"))
             .navigationBarTitleDisplayMode(.large)
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search your recipes"
+                prompt: String.localized("Search your recipes")
             )
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
-                        Picker("Sort", selection: $sortRaw) {
+                        Picker(String.localized("Sort"), selection: $sortRaw) {
                             ForEach(RecipeSort.allCases) { item in
                                 Text(item.title).tag(item.rawValue)
                             }
                         }
                     } label: {
                         Image(systemName: "arrow.up.arrow.down.circle.fill")
+                            .font(.title2)
                             .foregroundStyle(AppTheme.accent)
                             .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("Sort recipes")
+                    .accessibilityLabel(String.localized("Sort recipes"))
+                    .sensoryFeedback(.selection, trigger: sortRaw)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -102,7 +105,7 @@ struct RecipeListView: View {
                             .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("Add recipe")
+                    .accessibilityLabel(String.localized("Add recipe"))
                     .accessibilityIdentifier("add-recipe-button")
                 }
             }
@@ -129,9 +132,11 @@ struct RecipeListView: View {
         HStack(spacing: 20) {
             FoodIconView(iconID: "salad_bowl", size: 72)
                 .frame(width: 72, height: 72)
-            Text("Your cookbook")
+                .accessibilityHidden(true)
+            Text(String.localized("Your cookbook"))
                 .font(AppTheme.title)
                 .foregroundStyle(AppTheme.primaryText)
+                .accessibilityAddTraits(.isHeader)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, AppTheme.paddingLarge)
@@ -191,7 +196,7 @@ struct RecipeListView: View {
                             NavigationLink(value: recipe.recipeID) {
                                 RecipeCard(recipe: recipe)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(CardButtonStyle())
                             .accessibilityIdentifier("recipe-card")
                         }
                     }
@@ -253,7 +258,7 @@ struct RecipeCard: View {
         .cardStyle(tint: recipe.category.color)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(recipe.accessibilitySummary)
-        .accessibilityHint("Opens the recipe")
+        .accessibilityHint(String.localized("Opens the recipe"))
     }
 }
 
@@ -263,10 +268,10 @@ struct EmptyStateView: View {
     var body: some View {
         EmptyState(
             systemImage: "book.closed",
-            title: "Your journal is empty",
-            message: "Add a recipe you love, or discover one online and save it here.",
+            title: String.localized("Your journal is empty"),
+            message: String.localized("Add a recipe you love, or discover one online and save it here."),
             illustration: "veggie_plate",
-            actionTitle: "Add Recipe",
+            actionTitle: String.localized("Add Recipe"),
             action: onAdd
         )
         .padding(AppTheme.paddingLarge)
@@ -279,12 +284,12 @@ struct FilterEmptyView: View {
     var body: some View {
         VStack(spacing: AppTheme.paddingMedium) {
             TitleSubtitleBlock(
-                title: "Nothing matches",
-                subtitle: "Try another meal type, or show everything in your library.",
+                title: String.localized("Nothing matches"),
+                subtitle: String.localized("Try another meal type, or show everything in your library."),
                 style: .page,
                 alignment: .center
             )
-            Button("Show all recipes", action: reset)
+            Button(String.localized("Show all recipes"), action: reset)
                 .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity)
@@ -296,8 +301,8 @@ struct MissingRecipeView: View {
     var body: some View {
         EmptyState(
             systemImage: "book.closed",
-            title: "Recipe unavailable",
-            message: "This recipe is no longer in your library.",
+            title: String.localized("Recipe unavailable"),
+            message: String.localized("This recipe is no longer in your library."),
             illustration: "soup_bowl"
         )
         .background(AppTheme.background)

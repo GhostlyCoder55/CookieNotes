@@ -111,13 +111,15 @@ struct IngredientPickerView: View {
                     }
                 }
             }
-            .navigationTitle("Ingredients")
+            .navigationTitle(String.localized("Ingredients"))
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Search ingredients")
+            .searchable(text: $query, prompt: String.localized("Search ingredients"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button(String.localized("Close")) { dismiss() }
                         .foregroundStyle(AppTheme.secondaryText)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
             }
         }
@@ -127,7 +129,7 @@ struct IngredientPickerView: View {
     private var categoryChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ColorChip(title: "All", selected: activeCategory == nil) {
+                ColorChip(title: String.localized("All"), selected: activeCategory == nil) {
                     selectCategory(nil)
                 }
                 ForEach(catalog.categories) { category in
@@ -148,16 +150,19 @@ struct IngredientPickerView: View {
             Image(systemName: "magnifyingglass")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(AppTheme.tertiaryText)
+                .accessibilityHidden(true)
             Text(emptyTitle)
                 .font(AppTheme.body.weight(.semibold))
                 .foregroundStyle(AppTheme.primaryText)
                 .multilineTextAlignment(.center)
             if isSearching {
-                Button("Clear search") {
+                Button(String.localized("Clear search")) {
                     query = ""
                 }
                 .font(AppTheme.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.burntOrange)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
                 .padding(.top, 4)
             }
         }
@@ -166,13 +171,13 @@ struct IngredientPickerView: View {
 
     private var emptyTitle: String {
         if isSearching {
-            return "No ingredients match “\(trimmedQuery)”"
+            return String.localized("No ingredients match “%@”", trimmedQuery)
         }
         if let selectedCategory,
            let title = catalog.categories.first(where: { $0.id == selectedCategory })?.title {
-            return "No ingredients in \(title)"
+            return String.localized("No ingredients in %@", title)
         }
-        return "No ingredients found"
+        return String.localized("No ingredients found")
     }
 
     private func selectCategory(_ id: String?) {
@@ -208,7 +213,7 @@ struct IngredientPickerView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
             .shadow(color: AppTheme.cardShadow, radius: 6, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardButtonStyle())
         .accessibilityLabel(IngredientCatalog.displayName(for: icon))
     }
 }

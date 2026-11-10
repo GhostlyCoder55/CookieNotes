@@ -8,6 +8,7 @@ import SwiftUI
 
 struct DiscoverView: View {
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var languageManager = AppLanguageManager.shared
     @State private var query = ""
     @State private var results: [DiscoveredRecipeSummary] = []
     @State private var selectedRegion: CuisineRegion? = .african
@@ -39,17 +40,26 @@ struct DiscoverView: View {
             .overlay(alignment: .top) {
                 InAppToastOverlay()
             }
-            .navigationTitle("Discover")
+            .navigationTitle(String.localized("Discover"))
             .navigationBarTitleDisplayMode(.large)
             // Keep the search field visible after tab switches (same reliability as Library).
             .searchable(
                 text: $query,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search recipes or countries"
+                prompt: String.localized("Search recipes or countries")
             )
             .onSubmit(of: .search) { Task { await runSearch(fromTyping: false) } }
             .onChange(of: query) { _, newValue in
                 scheduleLiveSearch(for: newValue)
+            }
+            .onChange(of: languageManager.currentLanguage) { _, _ in
+                Task {
+                    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        await runBrowse()
+                    } else {
+                        await runSearch(fromTyping: false)
+                    }
+                }
             }
             .navigationDestination(for: String.self) { mealID in
                 DiscoverDetailView(mealID: mealID) {
@@ -70,7 +80,7 @@ struct DiscoverView: View {
 
     private var header: some View {
         TitleSubtitleBlock(
-            title: "Find something delicious",
+            title: String.localized("Find something delicious"),
             style: .page,
             alignment: .leading
         )
@@ -78,13 +88,14 @@ struct DiscoverView: View {
 
     private var browseByRegion: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Browse by Region")
+            Text(String.localized("Browse by Region"))
                 .font(AppTheme.sectionLabel)
                 .foregroundStyle(AppTheme.secondaryText)
+                .accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(CuisineTaxonomy.regions) { region in
-                        ColorChip(title: region.rawValue, selected: selectedRegion == region) {
+                        ColorChip(title: region.title, selected: selectedRegion == region) {
                             selectedRegion = region
                             query = ""
                             Task { await runBrowse() }
@@ -98,23 +109,23 @@ struct DiscoverView: View {
     @ViewBuilder
     private var content: some View {
         if isLoading {
-            ProgressView("Searching…")
+            ProgressView(String.localized("Searching…"))
                 .frame(maxWidth: .infinity)
                 .padding(.top, 40)
         } else if let errorMessage {
             EmptyState(
                 systemImage: "wifi.exclamationmark",
-                title: "Couldn’t load recipes",
+                title: String.localized("Couldn’t load recipes"),
                 message: errorMessage,
                 illustration: "soup_bowl",
-                actionTitle: "Try again",
+                actionTitle: String.localized("Try again"),
                 action: { Task { await retry() } }
             )
             .frame(minHeight: 280)
         } else if results.isEmpty {
             EmptyState(
                 systemImage: "magnifyingglass",
-                title: "Search the web of food",
+                title: String.localized("Search the web of food"),
                 message: "",
                 illustration: "pepperoni_pizza"
             )
@@ -127,7 +138,7 @@ struct DiscoverView: View {
                     } label: {
                         DiscoverCard(recipe: recipe)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(CardButtonStyle())
                 }
             }
         }
@@ -177,7 +188,8 @@ struct DiscoverView: View {
         let generation = searchGeneration
         selectedRegion = nil
         errorMessage = nil
-        if let cached = await MealDBClient.shared.cachedList(forKey: MealDBClient.listKey(search: trimmed)) {
+        let langSuffix = AppLanguageManager.shared.activeLanguage == .french ? "_fr" : "_en"
+        if let cached = await MealDBClient.shared.cachedList(forKey: MealDBClient.listKey(search: trimmed) + langSuffix) {
             guard generation == searchGeneration else { return }
             results = cached
             isLoading = false
@@ -256,16 +268,19 @@ struct DiscoverCard: View {
                     .lineLimit(1)
                     .redacted(reason: times == nil ? .placeholder : [])
                 Spacer(minLength: 4)
-                Text(recipe.area ?? recipe.category ?? " ")
+                let rawSubtitle = recipe.area ?? recipe.category
+                let subtitle = rawSubtitle.map { String.localized($0, defaultValue: $0) }
+                Text(subtitle ?? " ")
                     .font(AppTheme.smallCaption)
                     .foregroundStyle(AppTheme.tertiaryText)
                     .lineLimit(1)
-                    .opacity((recipe.area ?? recipe.category) == nil ? 0 : 1)
+                    .opacity(subtitle == nil ? 0 : 1)
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
+        .accessibilityElement(children: .combine)
         .task(id: recipe.id) {
             times = await MealDBClient.shared.timeEstimate(id: recipe.id)
         }
@@ -284,23 +299,40 @@ struct DiscoverDetailView: View {
     var onSaved: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var languageManager = AppLanguageManager.shared
     @State private var detail: DiscoveredRecipeDetail?
     @State private var times = RecipeTimeEstimate(prep: 0, cook: 0)
     @State private var ingredientIcons: [String] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var savedTrigger = false
 
-    private var displayInstructions: [String] {
+    private struct IndexedRow: Identifiable {
+        let id: String
+        let index: Int
+        let text: String
+    }
+
+    private var ingredientRows: [IndexedRow] {
         guard let detail else { return [] }
-        return RecipeSanitizer.cleanInstructions(detail.instructions)
+        return detail.ingredients.enumerated().map { idx, line in
+            IndexedRow(id: "ing-\(idx)-\(line)", index: idx, text: line)
+        }
+    }
+
+    private var instructionRows: [IndexedRow] {
+        guard let detail else { return [] }
+        return RecipeSanitizer.cleanInstructions(detail.instructions).enumerated().map { idx, step in
+            IndexedRow(id: "step-\(idx)-\(step.prefix(24))", index: idx, text: step)
+        }
     }
 
     var body: some View {
         ZStack {
             AppTheme.background.ignoresSafeArea()
             if isLoading {
-                ProgressView("Loading recipe…")
+                ProgressView(String.localized("Loading recipe…"))
             } else if let detail {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.paddingLarge) {
@@ -314,10 +346,12 @@ struct DiscoverDetailView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 220)
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                        .accessibilityHidden(true)
 
                         Text(detail.name)
                             .font(AppTheme.largeTitle)
                             .foregroundStyle(AppTheme.primaryText)
+                            .accessibilityAddTraits(.isHeader)
 
                         Text(detail.attribution)
                             .font(AppTheme.caption)
@@ -325,49 +359,51 @@ struct DiscoverDetailView: View {
 
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 8) {
-                                TimeInfoView(title: "Prep", time: times.prep)
-                                TimeInfoView(title: "Cook", time: times.cook)
-                                TimeInfoView(title: "Total", time: times.total)
+                                TimeInfoView(title: String.localized("Prep"), time: times.prep)
+                                TimeInfoView(title: String.localized("Cook"), time: times.cook)
+                                TimeInfoView(title: String.localized("Total"), time: times.total)
                             }
-                            Text("Estimated from the recipe steps")
+                            Text(String.localized("Estimated from the recipe steps"))
                                 .font(AppTheme.smallCaption)
                                 .foregroundStyle(AppTheme.tertiaryText)
                         }
 
-                        section(title: "Ingredients") {
-                            ForEach(Array(detail.ingredients.enumerated()), id: \.offset) { index, line in
+                        section(title: String.localized("Ingredients")) {
+                            ForEach(ingredientRows) { row in
                                 HStack(spacing: 10) {
                                     FoodIconView(
-                                        iconID: ingredientIcons.indices.contains(index) ? ingredientIcons[index] : "",
+                                        iconID: ingredientIcons.indices.contains(row.index) ? ingredientIcons[row.index] : "",
                                         size: 36
                                     )
-                                    Text(line)
+                                    .accessibilityHidden(true)
+                                    Text(row.text)
                                         .font(AppTheme.body)
                                         .foregroundStyle(AppTheme.primaryText)
                                 }
                             }
                         }
 
-                        section(title: "Instructions") {
-                            ForEach(Array(displayInstructions.enumerated()), id: \.offset) { index, step in
+                        section(title: String.localized("Instructions")) {
+                            ForEach(instructionRows) { row in
                                 HStack(alignment: .top, spacing: 10) {
-                                    Text("\(index + 1)")
+                                    Text(verbatim: "\(row.index + 1)")
                                         .font(AppTheme.smallCaption.weight(.bold))
                                         .foregroundStyle(.white)
                                         .frame(width: 24, height: 24)
                                         .background(AppTheme.coral)
                                         .clipShape(Circle())
-                                    Text(step)
+                                    Text(row.text)
                                         .font(AppTheme.body)
                                         .foregroundStyle(AppTheme.primaryText)
                                 }
+                                .accessibilityElement(children: .combine)
                             }
                         }
 
                         Button {
                             Task { await save(detail) }
                         } label: {
-                            Label(isSaving ? "Saving…" : "Save to My Recipes", systemImage: "bookmark.fill")
+                            Label(isSaving ? String.localized("Saving…") : String.localized("Save to My Recipes"), systemImage: "bookmark.fill")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
@@ -378,15 +414,19 @@ struct DiscoverDetailView: View {
             } else {
                 EmptyState(
                     systemImage: "exclamationmark.triangle",
-                    title: "Recipe unavailable",
-                    message: errorMessage ?? "Try another result.",
+                    title: String.localized("Recipe unavailable"),
+                    message: errorMessage ?? String.localized("Try another result."),
                     illustration: "soup_bowl"
                 )
             }
         }
-        .navigationTitle("Preview")
+        .navigationTitle(String.localized("Preview"))
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        .onChange(of: languageManager.currentLanguage) { _, _ in
+            Task { await load() }
+        }
+        .sensoryFeedback(.success, trigger: savedTrigger)
         .preferredColorScheme(.dark)
     }
 
@@ -395,6 +435,7 @@ struct DiscoverDetailView: View {
             Text(title)
                 .font(AppTheme.sectionLabel)
                 .foregroundStyle(AppTheme.accent)
+                .accessibilityAddTraits(.isHeader)
             content()
         }
         .sectionSurface()
@@ -436,8 +477,8 @@ struct DiscoverDetailView: View {
             coverIconID: mappedCategory.preferredCoverIconID
         )
         if let url = detail.thumbnailURL,
-           let (data, _) = try? await URLSession.shared.data(from: url),
-           let stored = PhotoProcessing.makeStoredPhoto(from: data) {
+            let (data, _) = try? await URLSession.shared.data(from: url),
+            let stored = PhotoProcessing.makeStoredPhoto(from: data) {
             let photo = RecipePhoto(sortIndex: 0, imageData: stored.imageData, thumbnailData: stored.thumbnailData)
             photo.recipe = recipe
             modelContext.insert(photo)
@@ -445,10 +486,11 @@ struct DiscoverDetailView: View {
         modelContext.insert(recipe)
         do {
             try modelContext.save()
+            savedTrigger.toggle()
             NotificationManager.shared.markUserAsActive()
             onSaved()
         } catch {
-            errorMessage = "Couldn’t save this recipe. Try again."
+            errorMessage = String.localized("Couldn’t save this recipe. Try again.")
         }
     }
 }

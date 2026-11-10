@@ -84,14 +84,15 @@ enum RecipeTextParser {
 
     private static func heading(for line: String) -> Section? {
         let normalized = line
-            .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            .trimmingCharacters(in: CharacterSet(charactersIn: ":").union(.whitespaces))
             .lowercased()
         switch normalized {
-        case "ingredient", "ingredients":
+        case "ingredient", "ingredients", "ingrédient", "ingrédients":
             return .ingredients
-        case "instruction", "instructions", "direction", "directions", "method", "step", "steps":
+        case "instruction", "instructions", "direction", "directions", "method", "step", "steps",
+             "préparation", "preparation", "étape", "étapes", "etape", "etapes", "méthode", "methode":
             return .instructions
-        case "note", "notes", "tip", "tips":
+        case "note", "notes", "tip", "tips", "astuce", "astuces", "conseil", "conseils":
             return .notes
         default:
             return nil

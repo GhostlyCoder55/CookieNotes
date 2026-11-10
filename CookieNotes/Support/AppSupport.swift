@@ -11,11 +11,16 @@ import UserNotifications
 enum AppLog {
     static let ads = Logger(subsystem: "com.gc.CookieNotes", category: "ads")
     static let storage = Logger(subsystem: "com.gc.CookieNotes", category: "storage")
+    static let update = Logger(subsystem: "com.gc.CookieNotes", category: "update")
 }
 
 enum LaunchOptions {
     static var skipTutorial: Bool {
         ProcessInfo.processInfo.arguments.contains("-CookieNotesSkipTutorial")
+    }
+
+    static var skipLanguageSelection: Bool {
+        ProcessInfo.processInfo.arguments.contains("-CookieNotesSkipLanguageSelection") || skipTutorial
     }
 
     static var skipConsent: Bool {
@@ -28,6 +33,35 @@ enum LaunchOptions {
 
     static var forceProductionAds: Bool {
         ProcessInfo.processInfo.arguments.contains("-CookieNotesUseProductionAds")
+    }
+
+    static var skipUpdateCheck: Bool {
+        ProcessInfo.processInfo.arguments.contains("-CookieNotesSkipUpdateCheck")
+    }
+
+    static var resetUpdateDismissal: Bool {
+        ProcessInfo.processInfo.arguments.contains("-CookieNotesResetUpdateDismissal")
+    }
+
+    static var mockUpdateAvailableVersion: String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: "-CookieNotesMockUpdateAvailable"),
+              index + 1 < args.count else { return nil }
+        return args[index + 1]
+    }
+
+    static var mockMandatoryUpdateVersion: String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: "-CookieNotesMockMandatoryUpdate"),
+              index + 1 < args.count else { return nil }
+        return args[index + 1]
+    }
+
+    static var updateConfigURL: URL? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: "-CookieNotesUpdateConfigURL"),
+              index + 1 < args.count else { return nil }
+        return URL(string: args[index + 1])
     }
 
     static var umpDebugGeography: String? {

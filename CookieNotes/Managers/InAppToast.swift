@@ -11,7 +11,7 @@ import SwiftUI
 final class InAppToast: ObservableObject {
     static let shared = InAppToast()
 
-    static let recipeAddedMessage = "Recipe added to Library"
+    static var recipeAddedMessage: String { String.localized("Recipe added to Library") }
     static let displayDuration: Duration = .seconds(2)
 
     @Published private(set) var message: String?

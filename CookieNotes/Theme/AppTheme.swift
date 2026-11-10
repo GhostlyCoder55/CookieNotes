@@ -23,7 +23,6 @@ struct AppTheme {
     static let leafGreen = Color(red: 0.42, green: 0.68, blue: 0.32)
     static let tomatoRed = Color(red: 0.86, green: 0.28, blue: 0.22)
     static let berryBlue = Color(red: 0.35, green: 0.55, blue: 0.88)
-    static let creamWhite = Color(red: 1.0, green: 0.98, blue: 0.94)
 
     // MARK: Adaptive surfaces — cream journal by day, warm charcoal by night
     private static func adaptive(light: UIColor, dark: UIColor) -> Color {
@@ -43,7 +42,6 @@ struct AppTheme {
     static let cream = adaptive(light: lightCream, dark: darkBase)
     static let parchment = adaptive(light: lightParchment, dark: darkElevated)
     static let background = cream
-    static let backgroundSecondary = parchment
     static let cardBackground = adaptive(light: .white, dark: darkCard)
     static let surfaceBackground = parchment
     static let primaryText = adaptive(
@@ -63,7 +61,6 @@ struct AppTheme {
         dark: UIColor(red: 0.78, green: 0.66, blue: 0.48, alpha: 0.22)
     )
     static let accent = burntOrange
-    static let accentWarm = goldenYellow
     static let accentAction = brightOrange
     static let adBackground = parchment
     static let error = Color(red: 0.78, green: 0.22, blue: 0.18)
@@ -74,28 +71,12 @@ struct AppTheme {
     )
     static let elevatedHighlight = adaptive(light: .white, dark: darkElevated)
 
-    // Compatibility aliases used across views
-    static let cocoa = warmBrown
-    static let mustard = goldenYellow
+    // Color aliases used by DiscoverView
     static let coral = brightOrange
-    static let strawberry = burntOrange
-    static let leaf = leafGreen
-    static let sky = brightOrange
-    static let grape = warmBrown
     static let blush = parchment
-    static let ink = primaryText
-    static let primaryBlack = primaryText
-    static let secondaryBrown = burntOrange
-    static let accentBrown = warmBrown
-    static let lightBrown = brightOrange.opacity(0.55)
-    static let accentYellow = goldenYellow
     static let cardShadow = adaptive(
         light: UIColor(white: 0, alpha: 0.08),
         dark: UIColor(white: 0, alpha: 0.45)
-    )
-    static let buttonShadow = adaptive(
-        light: UIColor(white: 0, alpha: 0.06),
-        dark: UIColor(white: 0, alpha: 0.35)
     )
 
     // Typography
@@ -104,11 +85,11 @@ struct AppTheme {
     static let headline = Font.system(.headline, design: .rounded).weight(.semibold)
     static let body = Font.system(.body, design: .rounded)
     static let caption = Font.system(.subheadline, design: .rounded)
+    static let footnote = Font.system(.footnote, design: .rounded)
     static let smallCaption = Font.system(.caption, design: .rounded)
     static let sectionLabel = Font.system(.subheadline, design: .rounded).weight(.bold)
 
     // Spacing / radii
-    static let paddingTiny: CGFloat = 4
     static let paddingSmall: CGFloat = 8
     static let paddingMedium: CGFloat = 16
     static let paddingLarge: CGFloat = 24
@@ -120,37 +101,74 @@ struct AppTheme {
 
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(AppTheme.headline)
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, AppTheme.paddingMedium)
-            .padding(.vertical, 12)
-            .frame(minHeight: 48)
-            .background(
-                (configuration.isPressed ? AppTheme.brightOrange : AppTheme.burntOrange)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+        BodyView(configuration: configuration)
+    }
+
+    private struct BodyView: View {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let configuration: Configuration
+
+        var body: some View {
+            configuration.label
+                .font(AppTheme.headline)
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, AppTheme.paddingMedium)
+                .padding(.vertical, 12)
+                .frame(minHeight: 48)
+                .background(configuration.isPressed ? AppTheme.brightOrange : AppTheme.burntOrange)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+        }
     }
 }
 
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(AppTheme.headline)
-            .foregroundStyle(configuration.isPressed ? AppTheme.brightOrange : AppTheme.burntOrange)
-            .padding(.horizontal, AppTheme.paddingMedium)
-            .padding(.vertical, 12)
-            .frame(minHeight: 48)
-            .background(configuration.isPressed ? AppTheme.goldenYellow.opacity(0.45) : AppTheme.parchment)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
-                    .stroke(AppTheme.burntOrange.opacity(configuration.isPressed ? 0.55 : 0.3), lineWidth: 1)
-            )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+        BodyView(configuration: configuration)
+    }
+
+    private struct BodyView: View {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let configuration: Configuration
+
+        var body: some View {
+            configuration.label
+                .font(AppTheme.headline)
+                .foregroundStyle(configuration.isPressed ? AppTheme.brightOrange : AppTheme.burntOrange)
+                .padding(.horizontal, AppTheme.paddingMedium)
+                .padding(.vertical, 12)
+                .frame(minHeight: 48)
+                .background(configuration.isPressed ? AppTheme.goldenYellow.opacity(0.45) : AppTheme.parchment)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
+                        .stroke(AppTheme.burntOrange.opacity(configuration.isPressed ? 0.55 : 0.3), lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+        }
+    }
+}
+
+/// Tactile press feedback for interactive cards and tiles following Apple HIG.
+struct CardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        BodyView(configuration: configuration)
+    }
+
+    private struct BodyView: View {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let configuration: Configuration
+
+        var body: some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.9 : 1)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+        }
     }
 }
 
@@ -315,7 +333,7 @@ struct CustomTextFieldStyle: TextFieldStyle {
 
 struct NotesEditor: View {
     @Binding var text: String
-    var placeholder: String = "A tip, a memory, or a swap"
+    var placeholder: String = String.localized("A tip, a memory, or a swap")
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -351,7 +369,7 @@ struct NotesEditor: View {
             RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous)
                 .stroke(AppTheme.burntOrange.opacity(0.22), lineWidth: 1)
         )
-        .accessibilityLabel("Notes")
+        .accessibilityLabel(String.localized("Notes"))
     }
 }
 
@@ -370,7 +388,7 @@ struct NoticeBanner: View {
                 .foregroundStyle(AppTheme.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let onDismiss {
-                Button("Dismiss", action: onDismiss)
+                Button(String.localized("Dismiss"), action: onDismiss)
                     .font(AppTheme.caption)
                     .foregroundStyle(AppTheme.burntOrange)
                     .frame(minHeight: 44)
@@ -460,7 +478,6 @@ struct EmptyState: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -477,7 +494,7 @@ struct ColorChip: View {
                 .font(AppTheme.caption.weight(.semibold))
                 .foregroundStyle(selected ? Color.white : AppTheme.primaryText)
                 .padding(.horizontal, 14)
-                .frame(minHeight: 40)
+                .frame(minHeight: 38)
                 .background(selected ? AppTheme.burntOrange : AppTheme.cardBackground)
                 .clipShape(Capsule())
                 .overlay(
@@ -487,17 +504,31 @@ struct ColorChip: View {
                     )
                 )
                 .shadow(color: selected ? AppTheme.burntOrange.opacity(0.28) : .clear, radius: 6, y: 2)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(ChipButtonStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .sensoryFeedback(.selection, trigger: selected) { _, isNowSelected in
+            isNowSelected
+        }
     }
 }
 
 private struct ChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.88 : 1)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+        BodyView(configuration: configuration)
+    }
+
+    private struct BodyView: View {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let configuration: Configuration
+
+        var body: some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.88 : 1)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+        }
     }
 }

@@ -37,8 +37,8 @@ enum RecipeSort: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .newest: "Newest"
-        case .name: "Name"
+        case .newest: String.localized("Newest")
+        case .name: String.localized("Name")
         }
     }
 }
@@ -50,20 +50,18 @@ enum RecipeFilter: String, CaseIterable, Identifiable {
     case lunch
     case dinner
     case dessert
-    case snack
     case drinks
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .all: "All"
-        case .favorites: "Favorites"
+        case .all: String.localized("All")
+        case .favorites: String.localized("Favorites")
         case .breakfast: RecipeCategory.breakfast.title
         case .lunch: RecipeCategory.lunch.title
         case .dinner: RecipeCategory.dinner.title
         case .dessert: RecipeCategory.dessert.title
-        case .snack: RecipeCategory.snack.title
         case .drinks: RecipeCategory.drinks.title
         }
     }
@@ -76,7 +74,6 @@ enum RecipeFilter: String, CaseIterable, Identifiable {
         case .lunch: .lunch
         case .dinner: .dinner
         case .dessert: .dessert
-        case .snack: .snack
         case .drinks: .drinks
         }
     }
@@ -114,7 +111,7 @@ enum RecipeLibrary {
             return true
         case .favorites:
             return recipe.isFavorite
-        case .breakfast, .lunch, .dinner, .dessert, .snack, .drinks:
+        case .breakfast, .lunch, .dinner, .dessert, .drinks:
             return recipe.category == filter.mealCategory
         }
     }

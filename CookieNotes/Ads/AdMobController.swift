@@ -33,9 +33,6 @@ final class AdMobController: ObservableObject {
         didPrepare = true
 
         if LaunchOptions.skipConsent {
-            if AdConsentStore.choice() == .unknown {
-                AdConsentStore.set(.declined)
-            }
             canPresentAds = false
             return
         }
@@ -78,15 +75,9 @@ final class AdMobController: ObservableObject {
                 }
             }
             privacyOptionsRequired = ConsentInformation.shared.privacyOptionsRequirementStatus == .required
-            if ConsentInformation.shared.consentStatus == .obtained && AdConsentStore.choice() == .unknown {
+            if ConsentInformation.shared.consentStatus == .obtained {
                 AdConsentStore.set(.allowed)
             }
-        }
-
-        if AdConsentStore.choice() == .unknown {
-            privacySheetMode = .firstRun
-            presentPrivacySheet = true
-            return
         }
 
         activateIfAllowed()
@@ -121,7 +112,7 @@ final class AdMobController: ObservableObject {
         let platformAllows = ConsentInformation.shared.canRequestAds
         let allowed = settings.mode != .disabled && consent.allowsAds && platformAllows && !settings.bannerAdUnitID.isEmpty
         if settings.mode != .disabled && consent.allowsAds && !platformAllows {
-            availabilityMessage = "Ads stay off until the privacy check can reach Google. Your recipes are still available."
+            availabilityMessage = String.localized("Ads stay off until the privacy check can reach Google. Your recipes are still available.")
         } else {
             availabilityMessage = nil
         }

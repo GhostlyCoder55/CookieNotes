@@ -44,7 +44,7 @@ struct CookieNotesApp: App {
         } catch {
             return (
                 PersistenceController.makeFallbackContainer(),
-                "Recipes couldn't be opened. You can keep using CookieNotes, but new changes may not be saved."
+                String.localized("Recipes couldn't be opened. You can keep using CookieNotes, but new changes may not be saved.")
             )
         }
     }

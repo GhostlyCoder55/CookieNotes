@@ -24,12 +24,17 @@ struct IngredientCatalogFile: Codable {
 }
 
 enum IngredientCatalog {
-    static let shared: IngredientCatalogFile = load()
+    private static let englishCatalog: IngredientCatalogFile = load(named: "IngredientCatalog")
+    private static let frenchCatalog: IngredientCatalogFile = load(named: "IngredientCatalog_fr")
 
-    private static func load() -> IngredientCatalogFile {
+    static var shared: IngredientCatalogFile {
+        AppLanguageManager.shared.activeLanguage == .french ? frenchCatalog : englishCatalog
+    }
+
+    private static func load(named name: String) -> IngredientCatalogFile {
         let urls: [URL?] = [
-            Bundle.main.url(forResource: "IngredientCatalog", withExtension: "json"),
-            Bundle.main.url(forResource: "IngredientCatalog", withExtension: "json", subdirectory: "Resources")
+            Bundle.main.url(forResource: name, withExtension: "json"),
+            Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "Resources")
         ]
         for case let url? in urls {
             guard let data = try? Data(contentsOf: url) else { continue }
@@ -43,44 +48,77 @@ enum IngredientCatalog {
                 )
                 return cleaned
             } catch {
-                assertionFailure("IngredientCatalog.json failed to decode: \(error)")
+                assertionFailure("\(name).json failed to decode: \(error)")
             }
         }
-        assertionFailure("IngredientCatalog.json missing from app bundle")
+        assertionFailure("\(name).json missing from app bundle")
         return IngredientCatalogFile(categories: [], displayNames: [:], aliases: [:])
     }
 
     static func displayName(for iconID: String) -> String {
-        shared.displayNames[iconID] ?? iconID.replacingOccurrences(of: "_", with: " ").capitalized
+        shared.displayNames[iconID] ?? englishCatalog.displayNames[iconID] ?? iconID.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     static func iconID(matching text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return nil }
-        if let cached = matchCache.value(for: trimmed) { return cached.isEmpty ? nil : cached }
+        let isFrench = AppLanguageManager.shared.activeLanguage == .french
+        let cacheKey = "\(isFrench ? "fr" : "en")|\(trimmed)"
+        if let cached = matchCache.value(for: cacheKey) { return cached.isEmpty ? nil : cached }
 
-        let match = shared.aliases[trimmed]
-            ?? aliasesByLength.first { trimmed.contains($0.key) }?.icon
-            ?? namesByLength.first { trimmed.contains($0.key) }?.icon
-        matchCache.set(match ?? "", for: trimmed)
+        let primaryCatalog = isFrench ? frenchCatalog : englishCatalog
+        let primaryAliases = isFrench ? frenchAliasesByLength : englishAliasesByLength
+        let primaryNames = isFrench ? frenchNamesByLength : englishNamesByLength
+
+        let secondaryCatalog = isFrench ? englishCatalog : frenchCatalog
+        let secondaryAliases = isFrench ? englishAliasesByLength : frenchAliasesByLength
+        let secondaryNames = isFrench ? englishNamesByLength : frenchNamesByLength
+
+        let folded = trimmed.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+
+        let match = matchIn(catalog: primaryCatalog, aliases: primaryAliases, names: primaryNames, term: trimmed)
+            ?? (folded != trimmed ? matchIn(catalog: primaryCatalog, aliases: primaryAliases, names: primaryNames, term: folded) : nil)
+            ?? matchIn(catalog: secondaryCatalog, aliases: secondaryAliases, names: secondaryNames, term: trimmed)
+            ?? (folded != trimmed ? matchIn(catalog: secondaryCatalog, aliases: secondaryAliases, names: secondaryNames, term: folded) : nil)
+
+        matchCache.set(match ?? "", for: cacheKey)
         return match
     }
 
-    /// Longest phrase wins ("beef stock" before "beef") and the result no longer
-    /// depends on dictionary iteration order.
-    private static let aliasesByLength: [(key: String, icon: String)] = shared.aliases
-        .map { (key: $0.key.lowercased(), icon: $0.value) }
-        .filter { !$0.key.isEmpty }
-        .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+    private static func matchIn(
+        catalog: IngredientCatalogFile,
+        aliases: [(key: String, icon: String)],
+        names: [(key: String, icon: String)],
+        term: String
+    ) -> String? {
+        catalog.aliases[term]
+            ?? aliases.first { term.contains($0.key) }?.icon
+            ?? names.first { term.contains($0.key) }?.icon
+    }
 
-    private static let namesByLength: [(key: String, icon: String)] = shared.displayNames
-        .map { (key: $0.value.lowercased(), icon: $0.key) }
-        .filter { !$0.key.isEmpty }
-        .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+    private static func sortedAliases(from dict: [String: String]) -> [(key: String, icon: String)] {
+        dict
+            .map { (key: $0.key.lowercased(), icon: $0.value) }
+            .filter { !$0.key.isEmpty }
+            .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+    }
+
+    private static func sortedNames(from dict: [String: String]) -> [(key: String, icon: String)] {
+        dict
+            .map { (key: $0.value.lowercased(), icon: $0.key) }
+            .filter { !$0.key.isEmpty }
+            .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+    }
+
+    private static let englishAliasesByLength: [(key: String, icon: String)] = sortedAliases(from: englishCatalog.aliases)
+    private static let englishNamesByLength: [(key: String, icon: String)] = sortedNames(from: englishCatalog.displayNames)
+
+    private static let frenchAliasesByLength: [(key: String, icon: String)] = sortedAliases(from: frenchCatalog.aliases)
+    private static let frenchNamesByLength: [(key: String, icon: String)] = sortedNames(from: frenchCatalog.displayNames)
 
     private static let matchCache = LockedCache<String, String>()
 
-    static let allIcons: [String] = Array(Set(shared.categories.flatMap(\.icons))).sorted()
+    static let allIcons: [String] = Array(Set(englishCatalog.categories.flatMap(\.icons))).sorted()
 }
 
 final class LockedCache<Key: Hashable, Value>: @unchecked Sendable {

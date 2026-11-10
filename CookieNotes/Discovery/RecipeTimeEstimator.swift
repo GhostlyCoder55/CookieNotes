@@ -25,16 +25,17 @@ enum RecipeTimeEstimator {
             let lowered = sentence.lowercased()
             var minutes = durations(in: lowered).reduce(0, +)
             // "Cook the pasta according to the packet instructions" — typical boil time.
-            if minutes == 0, lowered.contains("according to"),
-               lowered.contains("pack") || lowered.contains("instruction") || lowered.contains("directions") {
+            if minutes == 0,
+               (lowered.contains("according to") && (lowered.contains("pack") || lowered.contains("instruction") || lowered.contains("directions")))
+                || (lowered.contains("selon") && (lowered.contains("emballage") || lowered.contains("paquet") || lowered.contains("instructions"))) {
                 minutes = 10
             }
             let words = lowered.split { !$0.isLetter }.map(String.init)
-            let isPassive = words.contains(where: passiveWords.contains) && !lowered.contains("rest of")
+            let isPassive = words.contains(where: passiveWords.contains) && !lowered.contains("rest of") && !lowered.contains("reste de") && !lowered.contains("reste du") && !lowered.contains("reste des")
             if words.contains(where: { word in heatPrefixes.contains { word.hasPrefix($0) } }) {
                 mentionsHeat = true
             }
-            if lowered.contains("overnight") {
+            if lowered.contains("overnight") || lowered.contains("toute la nuit") || lowered.contains("jusqu'au lendemain") {
                 passive += 8 * 60
             }
             guard minutes > 0 else { continue }
@@ -62,15 +63,21 @@ enum RecipeTimeEstimator {
 
     /// Whole words only — "chill" must not match "chilli", nor "proof" match "ovenproof".
     private static let passiveWords: Set<String> = [
-        "marinate", "marinated", "marinating", "marinade", "chill", "chilled", "chilling",
-        "refrigerate", "refrigerated", "refrigerator", "fridge", "freeze", "freezer",
-        "rest", "resting", "soak", "soaking", "stand", "standing", "cool", "cooling",
-        "prove", "proving", "rise", "steep", "steeping", "overnight"
+        "marinate", "marinated", "marinating", "marinade", "mariner",
+        "chill", "chilled", "chilling", "refroidir", "refroidissez", "tiédir",
+        "refrigerate", "refrigerated", "refrigerator", "fridge", "réfrigérer", "réfrigérez", "frigo", "réfrigérateur",
+        "freeze", "freezer", "congeler", "congelez", "congélateur",
+        "rest", "resting", "repos", "reposer", "reposez",
+        "soak", "soaking", "tremper", "trempez", "macérer",
+        "stand", "standing", "cool", "cooling",
+        "prove", "proving", "rise", "lever", "pousser",
+        "steep", "steeping", "infuser", "infusez", "overnight"
     ]
 
     private static let heatPrefixes = [
         "bak", "boil", "simmer", "fry", "fried", "roast", "grill", "cook", "saut",
-        "sear", "brown", "oven", "heat", "steam", "poach", "broil", "toast", "stew", "brais"
+        "sear", "brown", "oven", "heat", "steam", "poach", "broil", "toast", "stew",
+        "cuir", "cuis", "bouill", "mijot", "frir", "rôt", "gril", "sais", "dor", "four", "chauff", "vapeur", "poch", "brais"
     ]
 
     private static let numberWords: [String: Double] = [
@@ -78,7 +85,11 @@ enum RecipeTimeEstimator {
         "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
         "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "forty-five": 45,
         "sixty": 60, "few": 3, "a few": 3, "couple of": 2, "a couple of": 2, "several": 4,
-        "half an": 0.5, "half a": 0.5
+        "half an": 0.5, "half a": 0.5,
+        "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5,
+        "sept": 7, "huit": 8, "neuf": 9, "dix": 10, "onze": 11, "douze": 12,
+        "quinze": 15, "vingt": 20, "trente": 30, "quarante": 40, "quarante-cinq": 45,
+        "soixante": 60, "quelques": 3, "plusieurs": 4, "demi": 0.5, "une demi": 0.5
     ]
 
     private static let durationRegex: NSRegularExpression = {
@@ -86,7 +97,7 @@ enum RecipeTimeEstimator {
             .map(NSRegularExpression.escapedPattern(for:))
             .joined(separator: "|")
         let number = "(\\d+(?:[.,]\\d+)?|\(words))"
-        let pattern = "(?<![\\w-])\(number)(?:\\s*(?:-|–|to|or)\\s*\(number))?\\s*(?:more\\s+|extra\\s+|further\\s+)?(hours?|hrs?|minutes?|mins?)\\b"
+        let pattern = "(?<![\\w-])\(number)(?:\\s*(?:-|–|to|or|à|et)\\s*\(number))?\\s*(?:more\\s+|extra\\s+|further\\s+|de\\s+plus\\s+|environ\\s+)?(hours?|heures?|hrs?|h|minutes?|mins?)\\b"
         return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }()
 
@@ -137,13 +148,13 @@ enum RecipeTimeEstimator {
 enum RecipeTimeFormat {
     /// "45 min", "1 hr", "2 hr 15 min".
     static func short(_ minutes: Int) -> String {
-        guard minutes > 0 else { return "0 min" }
+        guard minutes > 0 else { return String.localized("0 min") }
         let hours = minutes / 60
         let rest = minutes % 60
         switch (hours, rest) {
-        case (0, _): return "\(rest) min"
-        case (_, 0): return "\(hours) hr"
-        default: return "\(hours) hr \(rest) min"
+        case (0, _): return String.localized("%lld min", rest)
+        case (_, 0): return String.localized("%lld hr", hours)
+        default: return String.localized("%lld hr %lld min", hours, rest)
         }
     }
 }

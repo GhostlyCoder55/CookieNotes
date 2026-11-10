@@ -27,21 +27,32 @@ final class ShareViewController: UIViewController {
         Task { await loadShare() }
     }
 
+    private var isFrench: Bool {
+        let code = UserDefaults(suiteName: "group.com.gc.CookieNotes")?.string(forKey: "cookienotes.appLanguage")
+            ?? UserDefaults.standard.string(forKey: "cookienotes.appLanguage")
+            ?? Locale.current.language.languageCode?.identifier
+        return code?.hasPrefix("fr") == true
+    }
+
+    private func localized(_ en: String, _ fr: String) -> String {
+        isFrench ? fr : en
+    }
+
     private func configureLayout() {
         titleLabel.font = .preferredFont(forTextStyle: .title2)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textColor = Palette.primaryText
         titleLabel.numberOfLines = 2
-        titleLabel.text = "Save to CookieNotes"
+        titleLabel.text = localized("Save to CookieNotes", "Enregistrer dans CookieNotes")
 
         detailLabel.font = .preferredFont(forTextStyle: .body)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = Palette.secondaryText
         detailLabel.numberOfLines = 0
-        detailLabel.text = "Reading…"
+        detailLabel.text = localized("Reading…", "Lecture…")
 
         var saveConfig = UIButton.Configuration.filled()
-        saveConfig.title = "Save recipe"
+        saveConfig.title = localized("Save recipe", "Enregistrer la recette")
         saveConfig.baseBackgroundColor = Palette.accent
         saveConfig.baseForegroundColor = Palette.primaryText
         saveConfig.cornerStyle = .medium
@@ -50,7 +61,7 @@ final class ShareViewController: UIViewController {
         saveButton.isEnabled = false
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
 
-        cancelButton.setTitle("Cancel", for: .normal)
+        cancelButton.setTitle(localized("Cancel", "Annuler"), for: .normal)
         cancelButton.titleLabel?.font = .preferredFont(forTextStyle: .body)
         cancelButton.titleLabel?.adjustsFontForContentSizeCategory = true
         cancelButton.setTitleColor(Palette.secondaryText, for: .normal)
@@ -76,14 +87,22 @@ final class ShareViewController: UIViewController {
             let draft = SharedRecipeBuilder.draft(from: loaded)
             titleLabel.text = draft.name
             if draft.ingredients.isEmpty && draft.instructions.isEmpty {
-                detailLabel.text = "You can add ingredients and steps after it opens in CookieNotes."
+                detailLabel.text = localized(
+                    "You can add ingredients and steps after it opens in CookieNotes.",
+                    "Vous pourrez ajouter les ingrédients et les étapes après l'ouverture dans CookieNotes."
+                )
             } else {
-                detailLabel.text = "\(draft.ingredients.count) ingredients · \(draft.instructions.count) steps"
+                detailLabel.text = isFrench
+                    ? "\(draft.ingredients.count) ingrédients · \(draft.instructions.count) étapes"
+                    : "\(draft.ingredients.count) ingredients · \(draft.instructions.count) steps"
             }
             saveButton.isEnabled = true
         } else {
-            titleLabel.text = "Nothing to save"
-            detailLabel.text = "Share a link, some text, or a photo of a dish."
+            titleLabel.text = localized("Nothing to save", "Rien à enregistrer")
+            detailLabel.text = localized(
+                "Share a link, some text, or a photo of a dish.",
+                "Partagez un lien, du texte ou la photo d'un plat."
+            )
             saveButton.isEnabled = false
         }
     }
@@ -94,9 +113,15 @@ final class ShareViewController: UIViewController {
             try PendingImportStore.enqueue(payload)
             extensionContext?.completeRequest(returningItems: nil)
         } catch PendingImportError.appGroupUnavailable {
-            detailLabel.text = "Turn on the CookieNotes App Group in Xcode, then try again."
+            detailLabel.text = localized(
+                "Turn on the CookieNotes App Group in Xcode, then try again.",
+                "Activez le groupe d'applications CookieNotes dans Xcode, puis réessayez."
+            )
         } catch {
-            detailLabel.text = "CookieNotes couldn't save this. Try again."
+            detailLabel.text = localized(
+                "CookieNotes couldn't save this. Try again.",
+                "CookieNotes n'a pas pu enregistrer cet élément. Réessayez."
+            )
         }
     }
 

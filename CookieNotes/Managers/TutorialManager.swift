@@ -7,27 +7,28 @@ import Foundation
 
 /// First-run tips for newcomers only — stored so they appear once per install.
 final class TutorialManager: ObservableObject {
-    private static let storageKey = "cookienotes.didCompleteFirstRunTips"
-    private static let legacyKey = "hasCompletedTutorial"
+    private static let storageKey = "cookienotes.didCompleteFirstRunTipsV2"
 
     @Published private(set) var hasCompletedTutorial: Bool
 
     init() {
         if LaunchOptions.skipTutorial {
             hasCompletedTutorial = true
-            Self.persist(true)
+            return
+        }
+
+        let args = ProcessInfo.processInfo.arguments
+        if let idx = args.firstIndex(of: "-cookienotes.didCompleteFirstRunTips"),
+           idx + 1 < args.count {
+            hasCompletedTutorial = (args[idx + 1] as NSString).boolValue
             return
         }
 
         let defaults = UserDefaults.standard
-        if let stored = defaults.object(forKey: Self.storageKey) as? Bool {
-            hasCompletedTutorial = stored
-        } else if defaults.object(forKey: Self.legacyKey) != nil {
-            // Existing installs that already saw tips stay on the main app.
-            hasCompletedTutorial = defaults.bool(forKey: Self.legacyKey)
-            Self.persist(hasCompletedTutorial)
+        if defaults.object(forKey: Self.storageKey) != nil {
+            hasCompletedTutorial = defaults.bool(forKey: Self.storageKey)
         } else {
-            // Brand-new install — show tips this one time.
+            // Brand-new install or first launch on the updated onboarding — show Tips once.
             hasCompletedTutorial = false
         }
     }
@@ -40,15 +41,7 @@ final class TutorialManager: ObservableObject {
         Self.persist(true)
     }
 
-    /// Manual replay from About only — never used on cold launch automatically.
-    func resetTutorial() {
-        hasCompletedTutorial = false
-        Self.persist(false)
-    }
-
     private static func persist(_ completed: Bool) {
-        let defaults = UserDefaults.standard
-        defaults.set(completed, forKey: storageKey)
-        defaults.set(completed, forKey: legacyKey)
+        UserDefaults.standard.set(completed, forKey: storageKey)
     }
 }

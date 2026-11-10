@@ -95,6 +95,30 @@ struct RecipeLibraryTests {
         ).category == .uncategorized)
     }
 
+    @Test func snackIsNoLongerARecipeCategoryOrFilter() {
+        #expect(!RecipeCategory.allCases.contains { $0.rawValue == "snack" })
+        #expect(!RecipeCategory.allCases.contains { $0.rawValue == "snacks" })
+        #expect(!RecipeFilter.allCases.contains { $0.rawValue == "snack" })
+        #expect(RecipeCategory.inferred(fromMealDB: "Snack") == .uncategorized)
+        #expect(RecipeCategory.inferred(fromMealDB: "Snacks") == .uncategorized)
+        #expect(LocalMealCatalog.shared.allSatisfy {
+            !["snack", "snacks"].contains($0.category.lowercased())
+        })
+        #expect(LibraryFixture(
+            name: "Legacy snack",
+            ingredients: [],
+            instructions: [],
+            notes: "",
+            source: "",
+            prepTime: 0,
+            cookTime: 0,
+            dateCreated: .distantPast,
+            dateModified: .distantPast,
+            hasPhotos: false,
+            categoryRaw: "snack"
+        ).category == .uncategorized)
+    }
+
     @Test func hidesSampleRecipesFromLibrary() {
         var sample = soup
         sample.isSample = true
@@ -129,13 +153,18 @@ struct SharedRecipeTests {
     }
 
     @Test func builderUsesThePageHostAndRejectsUnsafeLinks() {
+        let suite = "CookieNotesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set("en", forKey: "cookienotes.appLanguage")
+
         let draft = SharedRecipeBuilder.draft(from: SharedRecipePayload(
             title: "",
             url: "https://example.com/stew",
             text: "https://example.com/stew",
             imageData: nil,
             receivedAt: Date(timeIntervalSince1970: 1)
-        ))
+        ), defaults: defaults)
         #expect(draft.name == "example.com")
         #expect(draft.source == "https://example.com/stew")
         #expect(draft.notes.contains("Saved from the web"))
@@ -146,7 +175,7 @@ struct SharedRecipeTests {
             text: "",
             imageData: nil,
             receivedAt: Date(timeIntervalSince1970: 1)
-        ))
+        ), defaults: defaults)
         #expect(unsafe.source.isEmpty)
         #expect(unsafe.name == "Card")
     }
@@ -177,6 +206,9 @@ struct SharedRecipeTests {
             "1. Heat the pan.",
             "1 Put the fennel and aubergine in a roasting tray.",
             "STEP 2: Add broth.",
+            "ÉTAPE 3",
+            "Étape 4 : Incorporer la sauce.",
+            "Préparation :",
             "1",
             "2",
             "3",
@@ -193,6 +225,7 @@ struct SharedRecipeTests {
             "Heat the pan.",
             "Put the fennel and aubergine in a roasting tray.",
             "Add broth.",
+            "Incorporer la sauce.",
             "Serve with sauce.",
             "Let rest before serving."
         ])
@@ -401,7 +434,7 @@ struct AdvertisingPolicyTests {
         let suite = "CookieNotesTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
-        #expect(AdConsentStore.choice(defaults: defaults) == .unknown)
+        #expect(AdConsentStore.choice(defaults: defaults) == .allowed)
         AdConsentStore.set(.declined, defaults: defaults)
         #expect(AdConsentStore.choice(defaults: defaults) == .declined)
         AdConsentStore.set(.allowed, defaults: defaults)
@@ -487,7 +520,7 @@ struct StorageTests {
             FetchDescriptor<Recipe>(predicate: #Predicate { $0.isSample == true })
         )
         #expect(samples.count == 1)
-        #expect(samples[0].name == "Weeknight Fried Rice")
+        #expect(samples[0].name == "Weeknight Fried Rice" || samples[0].name == "Riz frit de semaine")
     }
 
     @Test func removesPreviouslySeededExamples() throws {
@@ -559,4 +592,602 @@ private struct LegacyFixture: Encodable {
     var photos: [Data]
     var dateCreated: Date
     var dateModified: Date
+}
+
+@Suite("Localization and French Translation", .serialized)
+struct LocalizationTests {
+    @Test func languageSelectionAndPersistence() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        await manager.setLanguage(.french)
+        #expect(manager.activeLanguage == .french)
+        #expect(manager.currentLanguage == .french)
+
+        await manager.setLanguage(.english)
+        #expect(manager.activeLanguage == .english)
+        #expect(manager.currentLanguage == .english)
+
+        // Restore original
+        await manager.setLanguage(original)
+    }
+
+    @Test func ingredientIconMatchingInBothLanguages() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        // In French:
+        await manager.setLanguage(.french)
+        #expect(IngredientCatalog.iconID(matching: "pomme") == "apple")
+        #expect(IngredientCatalog.iconID(matching: "oignon") == "onion")
+        #expect(IngredientCatalog.iconID(matching: "ail") == "garlic")
+        #expect(IngredientCatalog.iconID(matching: "carotte") == "carrot")
+        #expect(IngredientCatalog.iconID(matching: "poulet") == "whole_raw_chicken")
+
+        // Accent tolerance in French:
+        #expect(IngredientCatalog.iconID(matching: "échalote") == "shallot")
+        #expect(IngredientCatalog.iconID(matching: "echalote") == "shallot")
+
+        // In English:
+        await manager.setLanguage(.english)
+        #expect(IngredientCatalog.iconID(matching: "apple") == "apple")
+        #expect(IngredientCatalog.iconID(matching: "onion") == "onion")
+        #expect(IngredientCatalog.iconID(matching: "garlic") == "garlic")
+        #expect(IngredientCatalog.iconID(matching: "carrot") == "carrot")
+        #expect(IngredientCatalog.iconID(matching: "chicken") == "whole_raw_chicken")
+
+        // Exact 1-to-1 equivalence between translated ingredients and original icons:
+        #expect(IngredientCatalog.iconID(matching: "apple") == IngredientCatalog.iconID(matching: "pomme"))
+        #expect(IngredientCatalog.iconID(matching: "onion") == IngredientCatalog.iconID(matching: "oignon"))
+        #expect(IngredientCatalog.iconID(matching: "garlic") == IngredientCatalog.iconID(matching: "ail"))
+        #expect(IngredientCatalog.iconID(matching: "chicken") == IngredientCatalog.iconID(matching: "poulet"))
+        #expect(IngredientCatalog.iconID(matching: "carrot") == IngredientCatalog.iconID(matching: "carotte"))
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func ingredientDisplayNamesInBothLanguages() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        await manager.setLanguage(.french)
+        #expect(IngredientCatalog.displayName(for: "apple") == "Pomme")
+        #expect(IngredientCatalog.displayName(for: "garlic") == "Ail")
+        #expect(IngredientCatalog.displayName(for: "onion") == "Oignon")
+        #expect(IngredientCatalog.displayName(for: "carrot") == "Carotte")
+
+        await manager.setLanguage(.english)
+        #expect(IngredientCatalog.displayName(for: "apple") == "Apple")
+        #expect(IngredientCatalog.displayName(for: "garlic") == "Garlic")
+        #expect(IngredientCatalog.displayName(for: "onion") == "Onion")
+        #expect(IngredientCatalog.displayName(for: "carrot") == "Carrot")
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func recipeCategoriesLocalization() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        await manager.setLanguage(.french)
+        #expect(RecipeCategory.dinner.title == "Souper")
+        #expect(RecipeCategory.breakfast.title == "Déjeuner")
+        #expect(RecipeCategory.lunch.title == "Dîner")
+        #expect(RecipeCategory.dessert.title == "Dessert")
+        #expect(RecipeCategory.drinks.title == "Boissons")
+        #expect(RecipeCategory.uncategorized.title == "Général")
+        #expect(String.localized("Algerian") == "Algérienne")
+
+        await manager.setLanguage(.english)
+        #expect(RecipeCategory.dinner.title == "Dinner")
+        #expect(RecipeCategory.breakfast.title == "Breakfast")
+        #expect(RecipeCategory.lunch.title == "Lunch")
+        #expect(RecipeCategory.dessert.title == "Dessert")
+        #expect(RecipeCategory.drinks.title == "Drinks")
+        #expect(RecipeCategory.uncategorized.title == "General")
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func recipeTimeFormattingInBothLanguages() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        await manager.setLanguage(.french)
+        #expect(RecipeTimeFormat.short(45) == "45 min")
+        #expect(RecipeTimeFormat.short(60) == "1 h")
+        #expect(RecipeTimeFormat.short(75) == "1 h 15 min")
+
+        await manager.setLanguage(.english)
+        #expect(RecipeTimeFormat.short(45) == "45 min")
+        #expect(RecipeTimeFormat.short(60) == "1 hr")
+        #expect(RecipeTimeFormat.short(75) == "1 hr 15 min")
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func localMealCatalogProvidesLocalizedMeals() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        await manager.setLanguage(.french)
+        let frMeals = LocalMealCatalog.shared
+        #expect(frMeals.count == 59)
+        if let jollof = frMeals.first(where: { $0.id == "local-west-african-jollof-rice" }) {
+            #expect(jollof.name == "Riz jollof ouest-africain")
+            #expect(jollof.ingredients.contains { $0.contains("riz") })
+        }
+
+        await manager.setLanguage(.english)
+        let enMeals = LocalMealCatalog.shared
+        #expect(enMeals.count == 59)
+        if let jollof = enMeals.first(where: { $0.id == "local-west-african-jollof-rice" }) {
+            #expect(jollof.name == "West African Jollof Rice")
+            #expect(jollof.ingredients.contains { $0.contains("rice") })
+        }
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func cuisineTaxonomyFrenchAliases() {
+        #expect(CuisineTaxonomy.canonicalArea(for: "mexicain") == "Mexican")
+        #expect(CuisineTaxonomy.canonicalArea(for: "francais") == "French")
+        #expect(CuisineTaxonomy.canonicalArea(for: "française") == "French")
+        #expect(CuisineTaxonomy.canonicalArea(for: "canadien") == "Canadian")
+        #expect(CuisineTaxonomy.canonicalArea(for: "japonais") == "Japanese")
+        #expect(CuisineTaxonomy.canonicalArea(for: "italien") == "Italian")
+    }
+
+    @MainActor
+    @Test func showcaseSampleRecipeLocalization() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        manager.setLanguage(.french)
+        let frFriedRice = RecipeMigration.showcaseFriedRice()
+        #expect(frFriedRice.name == "Riz frit de semaine")
+        #expect(frFriedRice.ingredients.first?.contains("tasses") == true)
+        #expect(frFriedRice.ingredientIconIDs == [
+            "fried_rice_bowl", "eggs", "peas", "onion", "garlic",
+            "ginger", "lettuce", "soy_sauce", "olive_oil", "vegetable_oil", "shrimp"
+        ])
+
+        manager.setLanguage(.english)
+        let enFriedRice = RecipeMigration.showcaseFriedRice()
+        #expect(enFriedRice.name == "Weeknight Fried Rice")
+        #expect(enFriedRice.ingredients.first?.contains("cups") == true)
+
+        manager.setLanguage(original)
+    }
+
+    @Test func recipeTranslatorIngredientsAndIcons() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+        await manager.setLanguage(.french)
+
+        let thymeTrans = RecipeTranslator.translateIngredient("1/2 teaspoon Thyme")
+        #expect(thymeTrans.contains("c. à thé"))
+        #expect(thymeTrans.contains("thym"))
+        #expect(IngredientCatalog.iconID(matching: thymeTrans) == "thyme")
+
+        let bayTrans = RecipeTranslator.translateIngredient("1 Bay Leaf")
+        #expect(bayTrans.contains("feuille de laurier") || bayTrans.contains("laurier"))
+        #expect(IngredientCatalog.iconID(matching: bayTrans) == "dried_bay_leaves")
+
+        let lemonTrans = RecipeTranslator.translateIngredient("1 tsp Lemon Juice")
+        #expect(lemonTrans.contains("c. à thé"))
+        #expect(lemonTrans.contains("jus de citron"))
+        #expect(IngredientCatalog.iconID(matching: lemonTrans) == "lemon")
+
+        let waterTrans = RecipeTranslator.translateIngredient("1 1/2 cup Water")
+        #expect(waterTrans.contains("tasse"))
+        #expect(waterTrans.contains("d'eau") || waterTrans.contains("eau"))
+
+        let oilTrans = RecipeTranslator.translateIngredient("5 tablespoons Olive Oil")
+        #expect(oilTrans.contains("c. à soupe"))
+        #expect(oilTrans.contains("huile d'olive"))
+        #expect(IngredientCatalog.iconID(matching: oilTrans) == "olive_oil")
+
+        let garlicTrans = RecipeTranslator.translateIngredient("3 Cloves Crushed Garlic")
+        #expect(garlicTrans.contains("gousse"))
+        #expect(garlicTrans.contains("ail"))
+        #expect(IngredientCatalog.iconID(matching: garlicTrans) == "garlic")
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func theMealDBCatalogTranslation() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+        await manager.setLanguage(.french)
+
+        if let record = TheMealDBCatalog.record(for: "53282") {
+            #expect(record.name == "Carottes algériennes")
+            #expect(record.ingredients.contains { $0.contains("thym") })
+            #expect(record.ingredients.contains { $0.contains("feuille de laurier") })
+            #expect(record.ingredients.contains { $0.contains("jus de citron") })
+            #expect(record.instructions.first?.contains("vapeur") == true)
+        }
+
+        // Verify MealDBClient.lookup returns translated French detail
+        do {
+            let detail = try await MealDBClient.shared.lookup(id: "53282")
+            #expect(detail.name == "Carottes algériennes")
+            #expect(detail.ingredients.contains { $0.contains("thym") })
+            #expect(detail.ingredients.contains { $0.contains("feuille de laurier") })
+            #expect(detail.ingredients.contains { $0.contains("jus de citron") })
+            #expect(detail.instructions.first?.contains("vapeur") == true)
+
+            // Test ingredient icon resolution for all ingredients in Algerian Carrots
+            let icons = detail.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
+            #expect(icons.contains("thyme"))
+            #expect(icons.contains("dried_bay_leaves"))
+            #expect(icons.contains("lemon"))
+            #expect(icons.contains("carrot"))
+            #expect(icons.contains("olive_oil"))
+            #expect(icons.contains("salt_bowl"))
+            #expect(icons.contains("garlic"))
+        } catch {
+            Issue.record("MealDBClient lookup failed: \(error)")
+        }
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func bouzgeneRecipeIsExcludedFromApp() async {
+        #expect(MealDBClient.isExcluded(id: "53284", name: nil))
+        #expect(MealDBClient.isExcluded(id: nil, name: "Pain berbère algérien bouzgène avec sauce aux poivrons rôtis"))
+        #expect(MealDBClient.isExcluded(id: nil, name: "Algerian Bouzgene Berber Bread with Roasted Pepper Sauce"))
+        #expect(TheMealDBCatalog.record(for: "53284") == nil)
+        await #expect(throws: Error.self) {
+            try await MealDBClient.shared.lookup(id: "53284")
+        }
+    }
+
+    @Test func frenchTimeEstimatorHandlesFrenchDurations() {
+        let estimate = RecipeTimeEstimator.estimate(
+            instructions: [
+                "Laisser mariner toute la nuit au réfrigérateur.",
+                "Faire cuire au four pendant 1 heure et 15 minutes jusqu'à coloration dorée."
+            ],
+            ingredientCount: 6,
+            category: "Beef"
+        )
+        #expect(estimate.prep >= 8 * 60)
+        #expect(estimate.cook >= 75)
+
+        let simple = RecipeTimeEstimator.estimate(
+            instructions: ["Faire mijoter 20 minutes à feu doux."],
+            ingredientCount: 4,
+            category: "Soup"
+        )
+        #expect(simple.cook == 20)
+    }
+
+    @Test func allBundledFrenchCatalogRecordsAreValidAndClean() throws {
+        let url = try #require(
+            Bundle.main.url(forResource: "TheMealDB_fr", withExtension: "json")
+                ?? Bundle.main.url(forResource: "TheMealDB_fr", withExtension: "json", subdirectory: "Resources")
+        )
+        let data = try Data(contentsOf: url)
+        let records = try JSONDecoder().decode([String: TheMealDBRecord].self, from: data)
+        #expect(records.count == 790)
+        #expect(records["53284"] == nil)
+
+        for (id, record) in records {
+            #expect(!MealDBClient.isExcluded(id: id, name: record.name))
+            #expect(!record.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            #expect(!record.ingredients.isEmpty)
+            #expect(!record.instructions.isEmpty)
+            #expect(record.thumbnailURL?.isEmpty == false)
+            for ingredient in record.ingredients {
+                #expect(!ingredient.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            for step in record.instructions {
+                #expect(!step.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                #expect(!step.contains("\u{200B}"))
+                #expect(step != "□" && step != "☐" && step != "◻")
+            }
+        }
+    }
+
+    @Test func frenchCatalogSearchFindsMatchingDishesWithThumbnails() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+        await manager.setLanguage(.french)
+
+        let chickenResults = TheMealDBCatalog.search(query: "poulet")
+        #expect(!chickenResults.isEmpty)
+        #expect(chickenResults.allSatisfy { $0.id != "53284" })
+        #expect(chickenResults.allSatisfy { $0.thumbnailURL != nil })
+
+        let carrotResults = TheMealDBCatalog.search(query: "carottes algériennes")
+        #expect(carrotResults.contains { $0.id == "53282" && $0.name == "Carottes algériennes" && $0.thumbnailURL != nil })
+
+        await manager.setLanguage(original)
+    }
+
+    @Test func frenchSharedTextAndBuilderLocalization() {
+        let parsed = RecipeTextParser.parse(
+            """
+            Soupe du dimanche
+
+            Ingrédients :
+            - 2 carottes
+            • 1 oignon
+
+            Préparation :
+            1. Couper les légumes.
+            2) Faire mijoter 20 minutes.
+
+            Astuces :
+            Encore meilleur le lendemain.
+            """
+        )
+        #expect(parsed.name == "Soupe du dimanche")
+        #expect(parsed.ingredients == ["2 carottes", "1 oignon"])
+        #expect(parsed.instructions == ["Couper les légumes.", "Faire mijoter 20 minutes."])
+        #expect(parsed.notes == "Encore meilleur le lendemain.")
+        #expect(parsed.hasStructuredContent)
+
+        let suite = "CookieNotesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set("fr", forKey: "cookienotes.appLanguage")
+
+        let draft = SharedRecipeBuilder.draft(from: SharedRecipePayload(
+            title: "",
+            url: "https://example.com/soupe",
+            text: "",
+            imageData: nil,
+            receivedAt: Date(timeIntervalSince1970: 1)
+        ), defaults: defaults)
+        #expect(draft.name == "example.com")
+        #expect(draft.notes.contains("Enregistrée depuis le Web"))
+
+        let untitledDraft = SharedRecipeBuilder.draft(from: SharedRecipePayload(
+            title: "",
+            url: "",
+            text: "",
+            imageData: nil,
+            receivedAt: Date(timeIntervalSince1970: 1)
+        ), defaults: defaults)
+        #expect(untitledDraft.name == "Recette enregistrée")
+    }
+
+    @MainActor
+    @Test func persistencePurgesBouzgeneAndMigratesSnackRecipes() throws {
+        let suite = "CookieNotesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: PersistenceController.initialSetupKey)
+        defaults.set("snack", forKey: "cookienotes.recipeFilter")
+
+        let container = try PersistenceController.makeContainer(inMemory: true)
+        let context = ModelContext(container)
+        context.insert(Recipe(name: "Algerian Bouzgene Berber Bread", categoryRaw: "sides"))
+        context.insert(Recipe(name: "Grandma Granola", categoryRaw: "snack"))
+        try context.save()
+
+        try PersistenceController.prepareLibrary(context: context, defaults: defaults)
+        let remaining = try context.fetch(FetchDescriptor<Recipe>())
+        #expect(remaining.count == 1)
+        #expect(remaining[0].name == "Grandma Granola")
+        #expect(remaining[0].category == .uncategorized)
+        #expect(defaults.string(forKey: "cookienotes.recipeFilter") == RecipeFilter.all.rawValue)
+    }
+}
+
+// MARK: - App Update Checker Tests
+
+final class MockUpdateURLProtocol: URLProtocol, @unchecked Sendable {
+    static var mockHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        return true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        return request
+    }
+
+    override func startLoading() {
+        guard let handler = MockUpdateURLProtocol.mockHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+@Suite("App update checker", .serialized)
+struct AppUpdateCheckerTests {
+
+    @Test func semanticVersionParsingAndComparisons() {
+        #expect(SemanticVersion("") == nil)
+        #expect(SemanticVersion("   ") == nil)
+        #expect(SemanticVersion("abc") == nil)
+
+        let v1 = SemanticVersion("1.0")!
+        let v10 = SemanticVersion("1.0.0")!
+        let v100 = SemanticVersion("1.0.0.0")!
+        #expect(v1 == v10)
+        #expect(v10 == v100)
+
+        let v101 = SemanticVersion("1.0.1")!
+        #expect(v1 < v101)
+        #expect(v101 > v10)
+
+        let v19 = SemanticVersion("1.9.9")!
+        let v110 = SemanticVersion("1.10.0")!
+        #expect(v19 < v110)
+
+        let v2 = SemanticVersion("2.0.0-beta.1")!
+        #expect(v2.components == [2, 0, 0])
+        #expect(v2 > v110)
+    }
+
+    @Test func remoteConfigDecodingAndLocalization() throws {
+        let json = """
+        {
+            "latestVersion": "1.2.0",
+            "minimumRequiredVersion": "1.1.0",
+            "isMandatory": true,
+            "appStoreURL": "https://apps.apple.com/app/cookienotes/id123456789",
+            "title": {
+                "en": "Major Update Available",
+                "fr": "Mise à jour majeure disponible"
+            },
+            "message": {
+                "en": "Please update to access new features.",
+                "fr": "Veuillez mettre à jour pour accéder aux nouveautés."
+            },
+            "releaseNotes": "• Better performance\\n• New French translations"
+        }
+        """.data(using: .utf8)!
+
+        let config = try JSONDecoder().decode(RemoteUpdateConfig.self, from: json)
+        #expect(config.latestVersion == "1.2.0")
+        #expect(config.minimumRequiredVersion == "1.1.0")
+        #expect(config.isMandatory == true)
+        #expect(config.appStoreURL == "https://apps.apple.com/app/cookienotes/id123456789")
+
+        #expect(config.title?.resolve(languageCode: "en") == "Major Update Available")
+        #expect(config.title?.resolve(languageCode: "fr") == "Mise à jour majeure disponible")
+        #expect(config.message?.resolve(languageCode: "fr") == "Veuillez mettre à jour pour accéder aux nouveautés.")
+        #expect(config.releaseNotes?.resolve(languageCode: "en")?.contains("Better performance") == true)
+    }
+
+    @MainActor
+    @Test func mandatoryUpdateTriggeredWhenBelowMinimumVersion() async throws {
+        let suite = "CookieNotesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockUpdateURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        let remoteJSON = """
+        {
+            "latestVersion": "2.0.0",
+            "minimumRequiredVersion": "1.5.0",
+            "isMandatory": false
+        }
+        """.data(using: .utf8)!
+
+        MockUpdateURLProtocol.mockHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, remoteJSON)
+        }
+
+        let manager = AppUpdateManager(
+            session: session,
+            userDefaults: defaults,
+            bundle: .main // installed is 1.0
+        )
+        manager.remoteConfigURL = URL(string: "https://localhost/update.json")
+
+        await manager.checkForUpdates(force: true)
+
+        let info = try #require(manager.updateInfo)
+        #expect(info.version == "2.0.0")
+        #expect(info.isMandatory == true) // Since installed 1.0 < minRequired 1.5.0
+    }
+
+    @MainActor
+    @Test func optionalUpdateDismissalIsRespectedUntilNewerVersion() async throws {
+        let suite = "CookieNotesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockUpdateURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        var returnedVersion = "1.1.0"
+        MockUpdateURLProtocol.mockHandler = { request in
+            let json = """
+            {
+                "latestVersion": "\(returnedVersion)",
+                "minimumRequiredVersion": "1.0.0",
+                "isMandatory": false
+            }
+            """.data(using: .utf8)!
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, json)
+        }
+
+        let manager = AppUpdateManager(
+            session: session,
+            userDefaults: defaults,
+            bundle: .main
+        )
+        manager.remoteConfigURL = URL(string: "https://localhost/update.json")
+
+        // 1. Initial check presents 1.1.0 update
+        await manager.checkForUpdates(force: true)
+        #expect(manager.updateInfo?.version == "1.1.0")
+        #expect(manager.updateInfo?.isMandatory == false)
+
+        // 2. User taps Maybe Later
+        manager.dismissOptionalUpdate()
+        #expect(manager.updateInfo == nil)
+        #expect(defaults.string(forKey: AppUpdateManager.dismissedVersionKey) == "1.1.0")
+
+        // 3. Subsequent check for same version is suppressed
+        await manager.checkForUpdates(force: true)
+        #expect(manager.updateInfo == nil)
+
+        // 4. Newer version 1.2.0 is released -> prompt appears again
+        returnedVersion = "1.2.0"
+        await manager.checkForUpdates(force: true)
+        #expect(manager.updateInfo?.version == "1.2.0")
+    }
+
+    @MainActor
+    @Test func networkErrorsFailSilentlyWithoutThrowingOrInterrupting() async {
+        let suite = "CookieNotesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockUpdateURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        MockUpdateURLProtocol.mockHandler = { _ in
+            throw URLError(.timedOut)
+        }
+
+        let manager = AppUpdateManager(
+            session: session,
+            userDefaults: defaults,
+            bundle: .main
+        )
+        manager.remoteConfigURL = URL(string: "https://localhost/update.json")
+
+        await manager.checkForUpdates(force: true)
+        #expect(manager.updateInfo == nil)
+        #expect(manager.isChecking == false)
+    }
 }
