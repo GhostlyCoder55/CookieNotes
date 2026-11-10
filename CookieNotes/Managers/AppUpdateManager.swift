@@ -279,18 +279,18 @@ final class AppUpdateManager: ObservableObject {
         // 4. Resolve remote config URL (LaunchOptions override takes precedence)
         let configURL = LaunchOptions.updateConfigURL ?? remoteConfigURL
 
-        // 5. Run async fetch on utility queue so launch is never delayed
+        // 5. Run async fetch (network I/O is non-blocking on URLSession)
         let currentVersionString = currentInstalledVersion
         let bundleID = bundleIdentifier
+        let activeLang = AppLanguageManager.shared.currentLanguage.code
 
-        let resolvedInfo = await Task.detached(priority: .utility) { [session, configURL] () -> AppUpdateInfo? in
-            await Self.fetchAndEvaluateUpdate(
-                currentVersionString: currentVersionString,
-                bundleID: bundleID,
-                remoteConfigURL: configURL,
-                session: session
-            )
-        }.value
+        let resolvedInfo = await Self.fetchAndEvaluateUpdate(
+            currentVersionString: currentVersionString,
+            bundleID: bundleID,
+            remoteConfigURL: configURL,
+            activeLanguageCode: activeLang,
+            session: session
+        )
 
         // 6. Handle evaluated result
         guard let resolvedInfo else {
@@ -339,6 +339,7 @@ final class AppUpdateManager: ObservableObject {
         currentVersionString: String,
         bundleID: String,
         remoteConfigURL: URL?,
+        activeLanguageCode: String,
         session: URLSession
     ) async -> AppUpdateInfo? {
         guard let currentVersion = SemanticVersion(currentVersionString) else {
@@ -400,7 +401,7 @@ final class AppUpdateManager: ObservableObject {
         }
 
         // 6. Build localized title and message
-        let activeLang = AppLanguageManager.shared.currentLanguage.code
+        let activeLang = activeLanguageCode
         let title: String
         let message: String
         let releaseNotes: String?
