@@ -4403,6 +4403,40 @@
           }
         }
       }
+    },
+    "Already in Library": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Already in Library"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déjà dans la bibliothèque"
+          }
+        }
+      }
+    },
+    "Saved in My Recipes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved in My Recipes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déjà dans mes recettes"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

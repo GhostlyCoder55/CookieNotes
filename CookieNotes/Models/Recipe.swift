@@ -31,6 +31,16 @@ final class Recipe {
     var coverIconID: String = ""
     /// When true, library/detail covers use category art instead of Discover photos.
     var usesCategoryCover: Bool = false
+    /// Stable, language-independent catalog identifier (e.g. "local-jollof-rice" or "52928").
+    /// Empty for user-created recipes.
+    var catalogRecipeID: String = ""
+    /// True while this saved recipe mirrors bundled/catalog text in the active language.
+    /// Set to false when the user edits the recipe title, ingredients, or instructions.
+    var isCatalogSynced: Bool = false
+    /// English master snapshot captured when saving a remote catalog recipe while in French.
+    var syncedEnglishName: String = ""
+    var syncedEnglishIngredients: [String] = []
+    var syncedEnglishInstructions: [String] = []
     var dateCreated: Date = Date()
     var dateModified: Date = Date()
     @Relationship(deleteRule: .cascade, inverse: \RecipePhoto.recipe)
@@ -53,6 +63,11 @@ final class Recipe {
         ingredientIconIDs: [String] = [],
         coverIconID: String = "",
         usesCategoryCover: Bool = false,
+        catalogRecipeID: String = "",
+        isCatalogSynced: Bool = false,
+        syncedEnglishName: String = "",
+        syncedEnglishIngredients: [String] = [],
+        syncedEnglishInstructions: [String] = [],
         dateCreated: Date = Date(),
         dateModified: Date = Date()
     ) {
@@ -72,6 +87,11 @@ final class Recipe {
         self.ingredientIconIDs = ingredientIconIDs
         self.coverIconID = coverIconID
         self.usesCategoryCover = usesCategoryCover
+        self.catalogRecipeID = catalogRecipeID
+        self.isCatalogSynced = isCatalogSynced
+        self.syncedEnglishName = syncedEnglishName
+        self.syncedEnglishIngredients = syncedEnglishIngredients
+        self.syncedEnglishInstructions = syncedEnglishInstructions
         self.dateCreated = dateCreated
         self.dateModified = dateModified
         self.photos = []
@@ -151,13 +171,57 @@ final class Recipe {
         return servings == 1 ? String.localized("1 serving") : String.localized("%lld servings", servings)
     }
 
+    private var resolvedCatalogContent: (name: String, ingredients: [String], instructions: [String])? {
+        guard isCatalogSynced, !catalogRecipeID.isEmpty else { return nil }
+        let canonicalID = MealDBClient.canonicalRecipeID(for: catalogRecipeID)
+        let activeLanguage = AppLanguageManager.shared.activeLanguage
+
+        if let localRecord = LocalMealCatalog.record(id: canonicalID, language: activeLanguage) {
+            return (
+                localRecord.name,
+                localRecord.ingredients,
+                RecipeSanitizer.cleanInstructions(localRecord.instructions, recipeName: localRecord.name)
+            )
+        }
+
+        if activeLanguage == .french, let mdbRecord = TheMealDBCatalog.record(for: canonicalID) {
+            return (
+                mdbRecord.name,
+                mdbRecord.ingredients,
+                RecipeSanitizer.cleanInstructions(mdbRecord.instructions, recipeName: mdbRecord.name)
+            )
+        }
+
+        if activeLanguage == .english, !syncedEnglishName.isEmpty {
+            return (
+                syncedEnglishName,
+                syncedEnglishIngredients,
+                RecipeSanitizer.cleanInstructions(syncedEnglishInstructions, recipeName: syncedEnglishName)
+            )
+        }
+
+        return nil
+    }
+
+    var localizedName: String {
+        resolvedCatalogContent?.name ?? name
+    }
+
+    var localizedIngredients: [String] {
+        resolvedCatalogContent?.ingredients ?? ingredients
+    }
+
+    var localizedInstructions: [String] {
+        resolvedCatalogContent?.instructions ?? RecipeSanitizer.cleanInstructions(instructions, recipeName: name)
+    }
+
     var accessibilitySummary: String {
-        var parts = [name, formattedTotalTime]
+        var parts = [localizedName, formattedTotalTime]
         if let formattedServings {
             parts.append(formattedServings)
         }
-        if !ingredients.isEmpty {
-            parts.append(String.localized("%lld ingredients", ingredients.count))
+        if !localizedIngredients.isEmpty {
+            parts.append(String.localized("%lld ingredients", localizedIngredients.count))
         }
         if isSample {
             parts.append(String.localized("example"))
@@ -172,8 +236,10 @@ final class Recipe {
     }
 
     var shareText: String {
-        var lines: [String] = [name, ""]
-        let cleanInstructions = RecipeSanitizer.cleanInstructions(instructions, recipeName: name)
+        let displayTitle = localizedName
+        let displayIngredients = localizedIngredients
+        let cleanInstructions = localizedInstructions
+        var lines: [String] = [displayTitle, ""]
         var meta: [String] = []
         if totalTime > 0 {
             meta.append(String.localized("Prep %lld min · Cook %lld min", prepTime, cookTime))
@@ -185,9 +251,9 @@ final class Recipe {
             lines.append(meta.joined(separator: " · "))
             lines.append("")
         }
-        if !ingredients.isEmpty {
+        if !displayIngredients.isEmpty {
             lines.append(String.localized("Ingredients"))
-            lines.append(contentsOf: ingredients.map { "• \($0)" })
+            lines.append(contentsOf: displayIngredients.map { "• \($0)" })
             lines.append("")
         }
         if !cleanInstructions.isEmpty {
@@ -258,4 +324,8 @@ final class LibraryIngredient {
     }
 }
 
-extension Recipe: RecipeSearchable {}
+extension Recipe: RecipeSearchable {
+    var searchableName: String { localizedName }
+    var searchableIngredients: [String] { localizedIngredients }
+    var searchableInstructions: [String] { localizedInstructions }
+}

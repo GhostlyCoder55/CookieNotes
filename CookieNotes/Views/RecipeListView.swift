@@ -234,7 +234,7 @@ struct RecipeCard: View {
                 }
             }
 
-            Text(recipe.name)
+            Text(recipe.localizedName)
                 .font(AppTheme.headline)
                 .foregroundStyle(AppTheme.primaryText)
                 .lineLimit(2, reservesSpace: true)

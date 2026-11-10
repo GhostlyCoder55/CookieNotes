@@ -706,25 +706,23 @@ struct LocalizationTests {
         await manager.setLanguage(original)
     }
 
-    @Test func localMealCatalogProvidesLocalizedMeals() async {
+    @Test func localMealCatalogProvidesLocalizedMeals() async throws {
         let manager = AppLanguageManager.shared
         let original = manager.activeLanguage
 
         await manager.setLanguage(.french)
         let frMeals = LocalMealCatalog.shared
-        #expect(frMeals.count == 59)
-        if let jollof = frMeals.first(where: { $0.id == "local-west-african-jollof-rice" }) {
-            #expect(jollof.name == "Riz jollof ouest-africain")
-            #expect(jollof.ingredients.contains { $0.contains("riz") })
-        }
+        #expect(frMeals.count == 41)
+        let frJollof = try #require(frMeals.first(where: { $0.id == "local-jollof-rice" }))
+        #expect(frJollof.name == "Riz jollof")
+        #expect(frJollof.ingredients.contains { $0.localizedCaseInsensitiveContains("riz") })
 
         await manager.setLanguage(.english)
         let enMeals = LocalMealCatalog.shared
-        #expect(enMeals.count == 59)
-        if let jollof = enMeals.first(where: { $0.id == "local-west-african-jollof-rice" }) {
-            #expect(jollof.name == "West African Jollof Rice")
-            #expect(jollof.ingredients.contains { $0.contains("rice") })
-        }
+        #expect(enMeals.count == 41)
+        let enJollof = try #require(enMeals.first(where: { $0.id == "local-jollof-rice" }))
+        #expect(enJollof.name == "Jollof Rice")
+        #expect(enJollof.ingredients.contains { $0.localizedCaseInsensitiveContains("rice") })
 
         await manager.setLanguage(original)
     }
@@ -871,8 +869,10 @@ struct LocalizationTests {
         )
         let data = try Data(contentsOf: url)
         let records = try JSONDecoder().decode([String: TheMealDBRecord].self, from: data)
-        #expect(records.count == 790)
+        #expect(records.count == 792)
         #expect(records["53284"] == nil)
+        #expect(records["52885"] != nil)
+        #expect(records["53120"] != nil)
 
         for (id, record) in records {
             #expect(!MealDBClient.isExcluded(id: id, name: record.name))
@@ -975,6 +975,353 @@ struct LocalizationTests {
         #expect(remaining[0].name == "Grandma Granola")
         #expect(remaining[0].category == .uncategorized)
         #expect(defaults.string(forKey: "cookienotes.recipeFilter") == RecipeFilter.all.rawValue)
+    }
+
+    @Test func localMealCatalogEnglishAndFrenchMatchOneToOne() throws {
+        let enMeals = LocalMealCatalog.allEnglishMeals
+        let frMeals = LocalMealCatalog.allFrenchMeals
+
+        #expect(enMeals.count == 41)
+        #expect(frMeals.count == 41)
+
+        #expect(enMeals.allSatisfy { !$0.id.hasPrefix("local-mdb-") })
+        #expect(frMeals.allSatisfy { !$0.id.hasPrefix("local-mdb-") })
+
+        let enByID = Dictionary(uniqueKeysWithValues: enMeals.map { ($0.id, $0) })
+        let frByID = Dictionary(uniqueKeysWithValues: frMeals.map { ($0.id, $0) })
+        #expect(enByID.count == 41)
+        #expect(frByID.count == 41)
+        #expect(Set(enByID.keys) == Set(frByID.keys))
+
+        var uniqueSources: Set<String> = []
+        var uniqueThumbnails: Set<String> = []
+
+        for en in enMeals {
+            let fr = try #require(frByID[en.id])
+            #expect(en.category == fr.category)
+            #expect(en.area == fr.area)
+            #expect(en.illustration == fr.illustration)
+            #expect(en.thumbnailURL == fr.thumbnailURL)
+            #expect(en.sourceURL == fr.sourceURL)
+
+            #expect(!en.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            #expect(!fr.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            #expect(!en.ingredients.isEmpty)
+            #expect(!en.instructions.isEmpty)
+            #expect(en.ingredients.count == fr.ingredients.count)
+            #expect(en.instructions.count == fr.instructions.count)
+
+            #expect(RecipeSanitizer.cleanInstructions(en.instructions, recipeName: en.name) == en.instructions)
+            #expect(RecipeSanitizer.cleanInstructions(fr.instructions, recipeName: fr.name) == fr.instructions)
+
+            let src = try #require(en.sourceURL?.trimmingCharacters(in: .whitespacesAndNewlines))
+            #expect(!src.isEmpty)
+            #expect(uniqueSources.insert(src).inserted)
+
+            let thumb = try #require(en.thumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines))
+            #expect(thumb.hasPrefix("https://"))
+            #expect(uniqueThumbnails.insert(thumb).inserted)
+        }
+    }
+
+    @Test func mealDBMergingDeduplicatesCanonicalIDAndPreservesSameNameRecipes() {
+        #expect(MealDBClient.canonicalRecipeID(for: "local-mdb-52928") == "52928")
+        #expect(MealDBClient.canonicalRecipeID(for: "local-jollof-rice") == "local-jollof-rice")
+
+        let legacyThumb = URL(string: "https://www.themealdb.com/images/media/meals/beavertails.jpg")!
+        let localDup = DiscoveredRecipeSummary(
+            id: "local-mdb-52928",
+            name: "Queues de castor (BeaverTails)",
+            thumbnailURL: legacyThumb,
+            category: "Dessert",
+            area: "Canadian",
+            illustrationIconID: "pancakes"
+        )
+        let remoteCanonical = DiscoveredRecipeSummary(
+            id: "52928",
+            name: "Queues de castor",
+            thumbnailURL: legacyThumb,
+            category: nil,
+            area: ""
+        )
+        let collapsed = MealDBClient.merging(local: [localDup], remote: [remoteCanonical])
+        #expect(collapsed.count == 1)
+        #expect(collapsed[0].id == "52928")
+        #expect(collapsed[0].category == "Dessert")
+        #expect(collapsed[0].area == "Canadian")
+        #expect(collapsed[0].thumbnailURL == legacyThumb)
+
+        // Two distinct recipes with the same title must BOTH be preserved.
+        let alfredo1 = DiscoveredRecipeSummary(id: "53064", name: "Fettuccine Alfredo", thumbnailURL: nil, category: "Pasta", area: "Italian")
+        let alfredo2 = DiscoveredRecipeSummary(id: "52835", name: "Fettuccine Alfredo", thumbnailURL: nil, category: "Pasta", area: "Italian")
+        let distinctSameName = MealDBClient.merging(local: [], remote: [alfredo1, alfredo2])
+        #expect(distinctSameName.count == 2)
+        #expect(Set(distinctSameName.map(\.id)) == ["53064", "52835"])
+
+        // Ambiguous shared title must not auto-resolve to one ID, whereas unique titles resolve.
+        #expect(TheMealDBCatalog.unambiguousID(matchingTitle: "Fettuccine Alfredo") == nil)
+        #expect(TheMealDBCatalog.unambiguousID(matchingTitle: "Carottes algériennes") == "53282")
+
+        // Empty area strings normalize cleanly to nil.
+        let emptyAreaRecord = TheMealDBRecord(
+            id: "99999",
+            name: "Test",
+            ingredients: ["1 cup water"],
+            instructions: ["Boil."],
+            category: "",
+            area: "",
+            thumbnailURL: nil
+        )
+        #expect(emptyAreaRecord.summary.area == nil)
+        #expect(emptyAreaRecord.summary.category == nil)
+    }
+
+    @MainActor
+    @Test func savingDiscoveredRecipeIsIdempotentAndSyncsAcrossLanguages() throws {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+        defer { manager.setLanguage(original) }
+
+        let container = try PersistenceController.makeContainer(inMemory: true)
+        let context = ModelContext(container)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24))
+        let jpeg = try #require(
+            renderer.image { ctx in
+                UIColor.orange.setFill()
+                ctx.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+            }.jpegData(compressionQuality: 0.8)
+        )
+
+        // 1. Save curated local recipe in English
+        manager.setLanguage(.english)
+        let jollofEN = try #require(LocalMealCatalog.detail(id: "local-jollof-rice"))
+        let firstSave = try PersistenceController.saveDiscoveredRecipe(jollofEN, photoData: jpeg, into: context)
+        #expect(firstSave == .inserted)
+
+        var stored = try context.fetch(FetchDescriptor<Recipe>())
+        #expect(stored.count == 1)
+        let jollofRecipe = stored[0]
+        #expect(jollofRecipe.catalogRecipeID == "local-jollof-rice")
+        #expect(jollofRecipe.isCatalogSynced == true)
+        #expect(jollofRecipe.sortedPhotos.count == 1)
+        jollofRecipe.notes = "Family Sunday favorite"
+        jollofRecipe.isFavorite = true
+        try context.save()
+
+        // 2. Switch to French: localizedName/ingredients/instructions translate in place without DB duplication
+        manager.setLanguage(.french)
+        #expect(jollofRecipe.localizedName == "Riz jollof")
+        #expect(jollofRecipe.localizedIngredients.count == jollofEN.ingredients.count)
+        #expect(jollofRecipe.localizedInstructions.count == jollofEN.instructions.count)
+        #expect(jollofRecipe.localizedIngredients.contains { $0.localizedCaseInsensitiveContains("riz") })
+
+        // Attempting to re-save the French version updates idempotently without duplicating recipe or photo
+        let jollofFR = try #require(LocalMealCatalog.detail(id: "local-jollof-rice"))
+        let secondSave = try PersistenceController.saveDiscoveredRecipe(jollofFR, photoData: jpeg, into: context)
+        #expect(secondSave == .updatedExisting)
+        stored = try context.fetch(FetchDescriptor<Recipe>())
+        #expect(stored.count == 1)
+        #expect(stored[0].sortedPhotos.count == 1)
+        #expect(stored[0].notes == "Family Sunday favorite")
+        #expect(stored[0].isFavorite == true)
+
+        // 3. Save remote TheMealDB recipe in French with English snapshot -> syncs both ways
+        let carrotsEN = DiscoveredRecipeDetail(
+            id: "53282",
+            name: "Algerian Carrots",
+            category: "Vegetarian",
+            area: "Algerian",
+            instructions: ["Steam carrots until tender."],
+            ingredients: ["4 Carrots", "1 tsp Thyme"],
+            thumbnailURL: nil,
+            sourceURL: "https://www.themealdb.com/meal/53282",
+            youtubeURL: nil,
+            tags: []
+        )
+        let carrotsFRRecord = try #require(TheMealDBCatalog.record(for: "53282"))
+        let carrotsFR = DiscoveredRecipeDetail(
+            id: "53282",
+            name: carrotsFRRecord.name,
+            category: carrotsFRRecord.category,
+            area: carrotsFRRecord.area,
+            instructions: carrotsFRRecord.instructions,
+            ingredients: carrotsFRRecord.ingredients,
+            thumbnailURL: nil,
+            sourceURL: "https://www.themealdb.com/meal/53282",
+            youtubeURL: nil,
+            tags: []
+        )
+        let carrotsSave = try PersistenceController.saveDiscoveredRecipe(
+            carrotsFR,
+            englishDetail: carrotsEN,
+            photoData: jpeg,
+            into: context
+        )
+        #expect(carrotsSave == .inserted)
+
+        stored = try context.fetch(FetchDescriptor<Recipe>())
+        let carrotsRecipe = try #require(stored.first { $0.catalogRecipeID == "53282" })
+        #expect(carrotsRecipe.localizedName == "Carottes algériennes")
+
+        manager.setLanguage(.english)
+        #expect(carrotsRecipe.localizedName == "Algerian Carrots")
+        #expect(carrotsRecipe.localizedIngredients == ["4 Carrots", "1 tsp Thyme"])
+
+        // Re-saving in English matches the existing canonical record
+        let duplicateCarrotsSave = try PersistenceController.saveDiscoveredRecipe(carrotsEN, photoData: jpeg, into: context)
+        #expect(duplicateCarrotsSave == .updatedExisting)
+        #expect(try context.fetch(FetchDescriptor<Recipe>()).count == 2)
+
+        // 4. Custom user text edit detaches catalog sync so user changes are never overwritten
+        carrotsRecipe.name = "My Custom Roasted Carrots"
+        carrotsRecipe.isCatalogSynced = false
+        try context.save()
+        manager.setLanguage(.french)
+        #expect(carrotsRecipe.localizedName == "My Custom Roasted Carrots")
+    }
+
+    @MainActor
+    @Test func migrationDeduplicatesLegacyLocalMDBAndPreservesCustomRecipes() throws {
+        let suite = "CookieNotesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: PersistenceController.initialSetupKey)
+
+        let container = try PersistenceController.makeContainer(inMemory: true)
+        let context = ModelContext(container)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24))
+        let jpeg = try #require(
+            renderer.image { ctx in
+                UIColor.brown.setFill()
+                ctx.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+            }.jpegData(compressionQuality: 0.8)
+        )
+        let storedPhoto = try #require(PhotoProcessing.makeStoredPhoto(from: jpeg))
+
+        // Legacy duplicate 1: removed local-mdb BeaverTails in French with favorite + note
+        let legacyLocal = Recipe(
+            name: "Queues de castor (BeaverTails)",
+            ingredients: ["1 tasse de lait"],
+            instructions: ["Frire."],
+            notes: "Serve warm with cinnamon",
+            source: "https://www.tastemade.com/videos/beavertails",
+            isImported: true,
+            isFavorite: true,
+            dateCreated: Date(timeIntervalSince1970: 100)
+        )
+        context.insert(legacyLocal)
+
+        // Legacy duplicate 2: MealDB BeaverTails with photo
+        let legacyMDB = Recipe(
+            name: "Queues de castor",
+            ingredients: ["1 tasse de lait"],
+            instructions: ["Frire."],
+            source: "la base de recettes · Canadienne · Dessert",
+            isImported: true,
+            dateCreated: Date(timeIntervalSince1970: 200)
+        )
+        context.insert(legacyMDB)
+        let photo = RecipePhoto(sortIndex: 0, imageData: storedPhoto.imageData, thumbnailData: storedPhoto.thumbnailData)
+        photo.recipe = legacyMDB
+        context.insert(photo)
+
+        // Custom user recipe that must remain untouched
+        let custom = Recipe(
+            name: "Aunt May's Gumbo",
+            ingredients: ["okra", "shrimp"],
+            instructions: ["Simmer slowly."],
+            notes: "Handwritten card",
+            isImported: false
+        )
+        context.insert(custom)
+
+        // Two distinct Fettuccine Alfredo recipes sharing the same title
+        let alfredo1 = Recipe(
+            name: "Fettuccine Alfredo",
+            source: "https://www.themealdb.com/meal/53064",
+            isImported: true
+        )
+        let alfredo2 = Recipe(
+            name: "Fettuccine Alfredo",
+            source: "https://www.themealdb.com/meal/52835",
+            isImported: true
+        )
+        context.insert(alfredo1)
+        context.insert(alfredo2)
+        try context.save()
+
+        try PersistenceController.prepareLibrary(context: context, defaults: defaults)
+
+        let remaining = try context.fetch(FetchDescriptor<Recipe>())
+        // Expected: 1 merged BeaverTails + 1 Aunt May's Gumbo + 2 distinct Fettuccine Alfredo = 4
+        #expect(remaining.count == 4)
+
+        let mergedBeaverTails = try #require(remaining.first { $0.catalogRecipeID == "52928" })
+        #expect(mergedBeaverTails.isFavorite == true)
+        #expect(mergedBeaverTails.notes.contains("Serve warm with cinnamon"))
+        #expect(mergedBeaverTails.hasPhotos == true)
+        #expect(mergedBeaverTails.dateCreated == Date(timeIntervalSince1970: 100))
+
+        let customAfter = try #require(remaining.first { $0.name == "Aunt May's Gumbo" })
+        #expect(customAfter.catalogRecipeID.isEmpty)
+        #expect(customAfter.notes == "Handwritten card")
+
+        let alfredoIDs = Set(remaining.filter { $0.name == "Fettuccine Alfredo" }.map(\.catalogRecipeID))
+        #expect(alfredoIDs == ["53064", "52835"])
+    }
+
+    @MainActor
+    @Test func importCoordinatorSkipsDuplicateSharedURLs() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ImportDedupe-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let p1 = SharedRecipePayload(
+            title: "Classic Apple Tart",
+            url: "https://example.com/apple-tart",
+            text: "2 apples",
+            imageData: nil,
+            receivedAt: Date(timeIntervalSince1970: 10)
+        )
+        let p2DuplicateSameBatch = SharedRecipePayload(
+            title: "Tarte aux pommes classique",
+            url: "HTTPS://EXAMPLE.COM/apple-tart",
+            text: "2 pommes",
+            imageData: nil,
+            receivedAt: Date(timeIntervalSince1970: 20)
+        )
+        let p3Distinct = SharedRecipePayload(
+            title: "Pear Tart",
+            url: "https://example.com/pear-tart",
+            text: "2 pears",
+            imageData: nil,
+            receivedAt: Date(timeIntervalSince1970: 30)
+        )
+
+        try PendingImportStore.enqueue(p1, inbox: folder)
+        try PendingImportStore.enqueue(p2DuplicateSameBatch, inbox: folder)
+        try PendingImportStore.enqueue(p3Distinct, inbox: folder)
+
+        let container = try PersistenceController.makeContainer(inMemory: true)
+        let context = ModelContext(container)
+        let coordinator = ImportCoordinator()
+        coordinator.consumePendingImports(context: context, inbox: folder)
+
+        var imported = try context.fetch(FetchDescriptor<Recipe>())
+        #expect(imported.count == 2)
+
+        // A later share of an already-imported URL must also be skipped idempotently.
+        let p4SubsequentDup = SharedRecipePayload(
+            title: "Classic Apple Tart Again",
+            url: "https://example.com/apple-tart",
+            text: "2 apples",
+            imageData: nil,
+            receivedAt: Date(timeIntervalSince1970: 40)
+        )
+        try PendingImportStore.enqueue(p4SubsequentDup, inbox: folder)
+        coordinator.consumePendingImports(context: context, inbox: folder)
+
+        imported = try context.fetch(FetchDescriptor<Recipe>())
+        #expect(imported.count == 2)
     }
 }
 

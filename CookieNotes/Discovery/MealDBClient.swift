@@ -127,8 +127,16 @@ actor MealDBClient {
         "s:\(search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
     }
 
+    static func canonicalRecipeID(for id: String) -> String {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("local-mdb-") {
+            return String(trimmed.dropFirst("local-mdb-".count))
+        }
+        return trimmed
+    }
+
     static func isExcluded(id: String?, name: String?) -> Bool {
-        if let id, id == "53284" { return true }
+        if let id, canonicalRecipeID(for: id) == "53284" { return true }
         if let name {
             let folded = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             if folded.contains("bouzgene") {
@@ -146,11 +154,14 @@ actor MealDBClient {
     }
 
     func timeEstimate(id: String) async -> RecipeTimeEstimate? {
-        if Self.isExcluded(id: id, name: nil) { return nil }
-        if let cached = timeCache[id] { return cached }
-        guard let detail = try? await lookup(id: id) else { return nil }
+        let canonicalID = Self.canonicalRecipeID(for: id)
+        if Self.isExcluded(id: canonicalID, name: nil) { return nil }
+        let langSuffix = AppLanguageManager.shared.activeLanguage == .french ? "_fr" : "_en"
+        let cacheKey = "\(canonicalID)\(langSuffix)"
+        if let cached = timeCache[cacheKey] { return cached }
+        guard let detail = try? await lookup(id: canonicalID) else { return nil }
         let estimate = detail.timeEstimate
-        timeCache[id] = estimate
+        timeCache[cacheKey] = estimate
         return estimate
     }
 
@@ -191,9 +202,11 @@ actor MealDBClient {
             for meal in meals {
                 guard !Self.isExcluded(id: meal.idMeal, name: meal.strMeal) else { continue }
                 let detail = meal.asDetail
-                let finalDetail = isFrench ? RecipeTranslator.translateDetail(detail) : detail
-                let detailKey = "\(finalDetail.id)_\(isFrench ? "fr" : "en")"
-                detailCache[detailKey] = finalDetail
+                let canonicalID = Self.canonicalRecipeID(for: detail.id)
+                detailCache["\(canonicalID)_en"] = detail
+                if isFrench {
+                    detailCache["\(canonicalID)_fr"] = RecipeTranslator.translateDetail(detail)
+                }
             }
             matches += meals.filter { !Self.isExcluded(id: $0.idMeal, name: $0.strMeal) }.map(\.asSummary)
         } catch {
@@ -345,38 +358,48 @@ actor MealDBClient {
         return results
     }
 
+    func cachedEnglishDetail(id: String) -> DiscoveredRecipeDetail? {
+        let canonicalID = Self.canonicalRecipeID(for: id)
+        if let localEN = LocalMealCatalog.record(id: canonicalID, language: .english)?.detail {
+            return localEN
+        }
+        return detailCache["\(canonicalID)_en"]
+    }
+
     func lookup(id: String) async throws -> DiscoveredRecipeDetail {
-        if Self.isExcluded(id: id, name: nil) {
+        let canonicalID = Self.canonicalRecipeID(for: id)
+        if Self.isExcluded(id: canonicalID, name: nil) {
             throw MealDBError.empty
         }
-        if let local = LocalMealCatalog.detail(id: id) {
+        if let local = LocalMealCatalog.detail(id: canonicalID) {
             return local
         }
         let isFrench = AppLanguageManager.shared.activeLanguage == .french
-        let cacheKey = "\(id)_\(isFrench ? "fr" : "en")"
+        let cacheKey = "\(canonicalID)_\(isFrench ? "fr" : "en")"
         if let cached = detailCache[cacheKey] { return cached }
         // Cards prefetch details for their times; share one request per meal.
         if let running = detailTasks[cacheKey] { return try await running.value }
 
-        let url = try endpoint("lookup.php", queryItems: [URLQueryItem(name: "i", value: id)])
-        let task = Task { [session] () throws -> DiscoveredRecipeDetail in
+        let url = try endpoint("lookup.php", queryItems: [URLQueryItem(name: "i", value: canonicalID)])
+        let task = Task { [session] () throws -> (english: DiscoveredRecipeDetail?, localized: DiscoveredRecipeDetail) in
             do {
                 let meals = try await Self.fetchMeals(url: url, session: session)
                 guard let meal = meals.first, !Self.isExcluded(id: meal.idMeal, name: meal.strMeal) else {
                     throw MealDBError.empty
                 }
                 let detail = meal.asDetail
-                return isFrench ? RecipeTranslator.translateDetail(detail) : detail
+                let localized = isFrench ? RecipeTranslator.translateDetail(detail) : detail
+                return (detail, localized)
             } catch {
                 if isFrench,
-                   !Self.isExcluded(id: id, name: nil),
-                   let record = TheMealDBCatalog.record(for: id),
+                   !Self.isExcluded(id: canonicalID, name: nil),
+                   let record = TheMealDBCatalog.record(for: canonicalID),
                    !Self.isExcluded(id: record.id, name: record.name) {
-                    return DiscoveredRecipeDetail(
+                    let localized = DiscoveredRecipeDetail(
                         id: record.id,
                         name: record.name,
-                        category: record.category,
-                        area: record.area,
+                        category: record.category.flatMap { $0.isEmpty ? nil : $0 },
+                        area: record.area.flatMap { $0.isEmpty ? nil : $0 },
                         instructions: RecipeSanitizer.cleanInstructions(record.instructions, recipeName: record.name),
                         ingredients: record.ingredients,
                         thumbnailURL: record.thumbnailURL.flatMap(URL.init(string:)),
@@ -384,15 +407,22 @@ actor MealDBClient {
                         youtubeURL: nil,
                         tags: []
                     )
+                    return (nil, localized)
                 }
                 throw error
             }
         }
-        detailTasks[cacheKey] = task
+        let wrappedTask = Task {
+            try await task.value.localized
+        }
+        detailTasks[cacheKey] = wrappedTask
         defer { detailTasks[cacheKey] = nil }
-        let detail = try await task.value
-        detailCache[cacheKey] = detail
-        return detail
+        let outcome = try await task.value
+        if let english = outcome.english {
+            detailCache["\(canonicalID)_en"] = english
+        }
+        detailCache[cacheKey] = outcome.localized
+        return outcome.localized
     }
 
     func cuisineAreas() async throws -> [CuisineArea] {
@@ -572,15 +602,36 @@ actor MealDBClient {
         }
     }
 
-    private static func merging(local: [DiscoveredRecipeSummary], remote: [DiscoveredRecipeSummary]) -> [DiscoveredRecipeSummary] {
-        var seenIDs = Set<String>()
-        var seenNames = Set<String>()
+    /// Deduplicates by language-independent canonical ID (never by translated recipe title)
+    /// so translated variants of the same recipe collapse cleanly while distinct recipes
+    /// sharing a similar name (e.g. two separate Fettuccine Alfredo recipes) remain intact.
+    static func merging(local: [DiscoveredRecipeSummary], remote: [DiscoveredRecipeSummary]) -> [DiscoveredRecipeSummary] {
+        var indexByCanonicalID: [String: Int] = [:]
         var merged: [DiscoveredRecipeSummary] = []
-        for item in local + remote {
-            let nameKey = item.name.lowercased()
-            guard seenIDs.insert(item.id).inserted else { continue }
-            guard seenNames.insert(nameKey).inserted else { continue }
-            merged.append(item)
+        for rawItem in local + remote {
+            let canonicalID = canonicalRecipeID(for: rawItem.id)
+            let normalizedItem = DiscoveredRecipeSummary(
+                id: canonicalID,
+                name: rawItem.name,
+                thumbnailURL: rawItem.thumbnailURL,
+                category: rawItem.category.flatMap { $0.isEmpty ? nil : $0 },
+                area: rawItem.area.flatMap { $0.isEmpty ? nil : $0 },
+                illustrationIconID: rawItem.illustrationIconID
+            )
+            if let existingIndex = indexByCanonicalID[canonicalID] {
+                let existing = merged[existingIndex]
+                merged[existingIndex] = DiscoveredRecipeSummary(
+                    id: existing.id,
+                    name: existing.name.isEmpty ? normalizedItem.name : existing.name,
+                    thumbnailURL: existing.thumbnailURL ?? normalizedItem.thumbnailURL,
+                    category: existing.category ?? normalizedItem.category,
+                    area: existing.area ?? normalizedItem.area,
+                    illustrationIconID: existing.illustrationIconID ?? normalizedItem.illustrationIconID
+                )
+                continue
+            }
+            indexByCanonicalID[canonicalID] = merged.count
+            merged.append(normalizedItem)
         }
         return merged
     }
@@ -646,12 +697,14 @@ private struct MealDBMeal: Decodable {
     }
 
     func asSummary(categoryHint: String?) -> DiscoveredRecipeSummary {
-        DiscoveredRecipeSummary(
+        let resolvedCategory = (categoryHint ?? strCategory).flatMap { $0.isEmpty ? nil : $0 }
+        let resolvedArea = strArea.flatMap { $0.isEmpty ? nil : $0 }
+        return DiscoveredRecipeSummary(
             id: idMeal ?? UUID().uuidString,
             name: strMeal ?? "Recipe",
             thumbnailURL: URL(string: strMealThumb ?? ""),
-            category: categoryHint ?? strCategory,
-            area: strArea
+            category: resolvedCategory,
+            area: resolvedArea
         )
     }
 
@@ -679,13 +732,13 @@ private struct MealDBMeal: Decodable {
         return DiscoveredRecipeDetail(
             id: idMeal ?? UUID().uuidString,
             name: strMeal ?? "Recipe",
-            category: strCategory,
-            area: strArea,
+            category: strCategory.flatMap { $0.isEmpty ? nil : $0 },
+            area: strArea.flatMap { $0.isEmpty ? nil : $0 },
             instructions: steps.isEmpty ? [strInstructions ?? ""].filter { !$0.isEmpty } : steps,
             ingredients: ingredients,
             thumbnailURL: URL(string: strMealThumb ?? ""),
-            sourceURL: strSource,
-            youtubeURL: strYoutube,
+            sourceURL: strSource.flatMap { $0.isEmpty ? nil : $0 },
+            youtubeURL: strYoutube.flatMap { $0.isEmpty ? nil : $0 },
             tags: (strTags ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         )
     }

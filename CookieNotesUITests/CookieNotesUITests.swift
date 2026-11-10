@@ -346,4 +346,125 @@ final class CookieNotesUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Plus tard"].exists)
         XCTAssertFalse(app.buttons["Maybe Later"].exists)
     }
+
+    @MainActor
+    func testDiscoverFrenchRegionsHaveNoDuplicateCards() throws {
+        let app = launchApp(language: "fr")
+        let discoverButton = app.tabBars.buttons["Découvrir"].exists ? app.tabBars.buttons["Découvrir"] : app.tabBars.buttons["Discover"]
+        XCTAssertTrue(discoverButton.waitForExistence(timeout: 8))
+        discoverButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Trouvez quelque chose de délicieux"].waitForExistence(timeout: 8))
+
+        // 1. Caribbean region in French: verify single canonical entries and zero legacy duplicates
+        let caribbeanChip = app.buttons["Caribéenne"]
+        XCTAssertTrue(caribbeanChip.waitForExistence(timeout: 5))
+        if !caribbeanChip.isHittable {
+            app.buttons["Africaine"].swipeLeft()
+        }
+        caribbeanChip.tap()
+
+        XCTAssertTrue(app.staticTexts["Boules de tamarin des Caraïbes"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Callaloo et poisson salé"].exists)
+        XCTAssertFalse(app.staticTexts["Boules de tamarin antillaises"].exists)
+        XCTAssertFalse(app.staticTexts["Callaloo et morue salée"].exists)
+        XCTAssertFalse(app.staticTexts["Poisson escovitch jamaïcain"].exists)
+
+        // 2. Scroll the horizontal chip bar to reveal North American, then verify no chili/BeaverTails dupes
+        let northAmericanChip = app.buttons["Nord-américaine"]
+        XCTAssertTrue(northAmericanChip.waitForExistence(timeout: 5))
+        let chipBarY = caribbeanChip.frame.midY
+        for _ in 0..<4 where northAmericanChip.frame.maxX > app.frame.maxX - 16 {
+            let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.width - 40, dy: chipBarY))
+            let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 40, dy: chipBarY))
+            start.press(forDuration: 0.02, thenDragTo: end)
+        }
+        northAmericanChip.tap()
+
+        XCTAssertTrue(app.staticTexts["Barres de Nanaimo"].waitForExistence(timeout: 15))
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["Chili au bœuf braisé"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["Chili de bœuf braisé au chorizo"].exists)
+        XCTAssertFalse(app.staticTexts["Queues de castor (BeaverTails)"].exists)
+
+        // 3. Search "Queues de castor" directly to verify exactly 1 card appears
+        let searchField = app.searchFields.firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        searchField.tap()
+        searchField.typeText("Queues de castor\n")
+        XCTAssertTrue(app.staticTexts["Queues de castor"].waitForExistence(timeout: 12))
+        XCTAssertFalse(app.staticTexts["Queues de castor (BeaverTails)"].exists)
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == 'Queues de castor'")).count, 1)
+    }
+
+    @MainActor
+    func testSaveDiscoverRecipeThenSwitchLanguagePreservesSingleSyncedRecipe() throws {
+        let app = launchApp(language: "fr")
+        let discoverButton = app.tabBars.buttons["Découvrir"]
+        XCTAssertTrue(discoverButton.waitForExistence(timeout: 8))
+        discoverButton.tap()
+
+        let algerianCardFR = app.staticTexts["Carottes algériennes"]
+        XCTAssertTrue(algerianCardFR.waitForExistence(timeout: 15))
+        algerianCardFR.tap()
+
+        let saveButtonFR = app.buttons["Enregistrer dans mes recettes"]
+        XCTAssertTrue(saveButtonFR.waitForExistence(timeout: 10))
+        saveButtonFR.tap()
+
+        // Saving returns to Discover feed
+        XCTAssertTrue(app.staticTexts["Trouvez quelque chose de délicieux"].waitForExistence(timeout: 10))
+
+        // Check Library (Bibliothèque) has 1 French recipe
+        let libraryTabFR = app.tabBars.buttons["Bibliothèque"]
+        XCTAssertTrue(libraryTabFR.exists)
+        libraryTabFR.tap()
+        XCTAssertTrue(app.staticTexts["Carottes algériennes"].waitForExistence(timeout: 8))
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier == 'recipe-card'")).count, 1)
+
+        // Switch language to English in À propos
+        app.tabBars.buttons["À propos"].tap()
+        let englishButton = app.buttons["English 🇬🇧"]
+        XCTAssertTrue(englishButton.waitForExistence(timeout: 5))
+        englishButton.tap()
+
+        // Library still has 1 recipe, now cleanly displayed in English
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.staticTexts["Algerian Carrots"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["Carottes algériennes"].exists)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier == 'recipe-card'")).count, 1)
+
+        // Opening it shows English content
+        app.staticTexts["Algerian Carrots"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Carrots'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'panier vapeur'")).firstMatch.exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'recipe-card'")).firstMatch.waitForExistence(timeout: 5))
+
+        // Check Discover in English shows "Saved in My Recipes" and does not duplicate on tap
+        app.tabBars.buttons["Discover"].tap()
+        let algerianCardEN = app.staticTexts["Algerian Carrots"]
+        XCTAssertTrue(algerianCardEN.waitForExistence(timeout: 15))
+        algerianCardEN.tap()
+        let alreadySavedButton = app.buttons["Saved in My Recipes"]
+        XCTAssertTrue(alreadySavedButton.waitForExistence(timeout: 10))
+        alreadySavedButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Find something delicious"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier == 'recipe-card'")).count, 1)
+
+        // Clean up the test recipe so persistent UI-test store remains empty for other UI tests
+        app.buttons["recipe-card"].firstMatch.tap()
+        let moreButton = app.buttons["More options"]
+        XCTAssertTrue(moreButton.waitForExistence(timeout: 5))
+        moreButton.tap()
+        let deleteMenuButton = app.buttons["Delete"]
+        XCTAssertTrue(deleteMenuButton.waitForExistence(timeout: 5))
+        deleteMenuButton.tap()
+        let confirmDelete = app.alerts["Delete Recipe"].buttons["Delete"]
+        XCTAssertTrue(confirmDelete.waitForExistence(timeout: 5))
+        confirmDelete.tap()
+        XCTAssertTrue(app.staticTexts["Your journal is empty"].waitForExistence(timeout: 8))
+    }
 }

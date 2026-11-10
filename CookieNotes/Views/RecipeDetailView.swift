@@ -39,10 +39,10 @@ struct RecipeDetailView: View {
 
     init(recipe: Recipe) {
         self.recipe = recipe
-        _name = State(initialValue: recipe.name)
+        _name = State(initialValue: recipe.localizedName)
         _ingredients = State(initialValue: Self.lines(from: recipe))
         _instructions = State(
-            initialValue: RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
+            initialValue: recipe.localizedInstructions
                 .map { EditableLine(text: $0) }
         )
         _notes = State(initialValue: recipe.notes)
@@ -56,7 +56,7 @@ struct RecipeDetailView: View {
     }
 
     private static func lines(from recipe: Recipe) -> [EditableLine] {
-        recipe.ingredients.enumerated().map { index, text in
+        recipe.localizedIngredients.enumerated().map { index, text in
             EditableLine(text: text, iconID: recipe.iconID(forIngredientIndex: index))
         }
     }
@@ -76,6 +76,9 @@ struct RecipeDetailView: View {
     }
 
     private var displayInstructions: [String] {
+        if recipe.isCatalogSynced, !recipe.catalogRecipeID.isEmpty {
+            return recipe.localizedInstructions
+        }
         let cleaned = RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
         if AppLanguageManager.shared.activeLanguage == .french {
             return cleaned.map { RecipeTranslator.translateInstruction($0) }
@@ -84,9 +87,14 @@ struct RecipeDetailView: View {
     }
 
     private var displayIngredientRows: [DisplayRow] {
-        let items = AppLanguageManager.shared.activeLanguage == .french
-            ? recipe.ingredients.map { RecipeTranslator.translateIngredient($0) }
-            : recipe.ingredients
+        let items: [String]
+        if recipe.isCatalogSynced, !recipe.catalogRecipeID.isEmpty {
+            items = recipe.localizedIngredients
+        } else {
+            items = AppLanguageManager.shared.activeLanguage == .french
+                ? recipe.ingredients.map { RecipeTranslator.translateIngredient($0) }
+                : recipe.ingredients
+        }
         return items.enumerated().map { idx, text in
             DisplayRow(id: "ing-\(idx)-\(text)", index: idx, text: text)
         }
@@ -121,10 +129,11 @@ struct RecipeDetailView: View {
 
     private var hasChanges: Bool {
         let draft = sanitizedDraft
-        let existingIcons = recipe.ingredients.indices.map { recipe.iconID(forIngredientIndex: $0) }
-        return draft.name != recipe.name
-            || draft.ingredients != recipe.ingredients
-            || draft.instructions != recipe.instructions
+        let baselineIngredients = recipe.localizedIngredients
+        let existingIcons = baselineIngredients.indices.map { recipe.iconID(forIngredientIndex: $0) }
+        return draft.name != recipe.localizedName
+            || draft.ingredients != baselineIngredients
+            || draft.instructions != recipe.localizedInstructions
             || draft.notes != recipe.notes
             || draft.source != recipe.source
             || RecipeSanitizer.minutes(prepTime) != recipe.prepTime
@@ -172,7 +181,7 @@ struct RecipeDetailView: View {
             Button(String.localized("Cancel"), role: .cancel) {}
             Button(String.localized("Delete"), role: .destructive, action: deleteRecipe)
         } message: {
-            Text(String.localized("Delete %@? This can't be undone.", recipe.name))
+            Text(String.localized("Delete %@? This can't be undone.", recipe.localizedName))
         }
         .alert(String.localized("Couldn't save"), isPresented: saveAlertPresented) {
             Button(String.localized("OK"), role: .cancel) { saveError = nil }
@@ -297,7 +306,7 @@ struct RecipeDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous))
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(recipe.name)
+                Text(recipe.localizedName)
                     .font(AppTheme.largeTitle)
                     .foregroundStyle(AppTheme.primaryText)
                     .accessibilityAddTraits(.isHeader)
@@ -571,10 +580,10 @@ struct RecipeDetailView: View {
     }
 
     private func beginEditing() {
-        name = recipe.name
+        name = recipe.localizedName
         ingredients = Self.lines(from: recipe)
         if ingredients.isEmpty { ingredients = [] }
-        let cleanedInstructions = RecipeSanitizer.cleanInstructions(recipe.instructions, recipeName: recipe.name)
+        let cleanedInstructions = recipe.localizedInstructions
         instructions = cleanedInstructions.isEmpty ? [EditableLine(text: "")] : cleanedInstructions.map { EditableLine(text: $0) }
         notes = recipe.notes
         source = recipe.source
@@ -609,9 +618,17 @@ struct RecipeDetailView: View {
     private func saveChanges() {
         let draft = sanitizedDraft
         guard !draft.name.isEmpty else { return }
-        recipe.name = draft.name
-        recipe.ingredients = draft.ingredients
-        recipe.instructions = draft.instructions
+        let textEdited = draft.name != recipe.localizedName
+            || draft.ingredients != recipe.localizedIngredients
+            || draft.instructions != recipe.localizedInstructions
+        if textEdited {
+            recipe.isCatalogSynced = false
+        }
+        if !recipe.isCatalogSynced || textEdited {
+            recipe.name = draft.name
+            recipe.ingredients = draft.ingredients
+            recipe.instructions = draft.instructions
+        }
         recipe.notes = draft.notes
         recipe.source = draft.source
         recipe.prepTime = RecipeSanitizer.minutes(prepTime)

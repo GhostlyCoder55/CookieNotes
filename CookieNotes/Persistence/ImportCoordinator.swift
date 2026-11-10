@@ -12,10 +12,10 @@ final class ImportCoordinator: ObservableObject {
 
     @Published var bannerMessage: String?
 
-    func consumePendingImports(context: ModelContext) {
+    func consumePendingImports(context: ModelContext, inbox: URL? = nil) {
         let payloads: [SharedRecipePayload]
         do {
-            payloads = try PendingImportStore.drain()
+            payloads = try PendingImportStore.drain(inbox: inbox)
         } catch PendingImportError.appGroupUnavailable {
             return
         } catch {
@@ -25,10 +25,22 @@ final class ImportCoordinator: ObservableObject {
 
         guard !payloads.isEmpty else { return }
 
+        let existingImported = (try? context.fetch(
+            FetchDescriptor<Recipe>(predicate: #Predicate { $0.isSample == false && $0.isImported == true })
+        )) ?? []
+        var knownSourceURLs = Set(
+            existingImported
+                .compactMap { RecipeSanitizer.webURL($0.source)?.lowercased() }
+        )
+
         var savedNames: [String] = []
         for payload in payloads {
             let draft = SharedRecipeBuilder.draft(from: payload)
             guard !draft.name.isEmpty else { continue }
+
+            if let normalizedURL = RecipeSanitizer.webURL(draft.source)?.lowercased() {
+                guard knownSourceURLs.insert(normalizedURL).inserted else { continue }
+            }
 
             let iconIDs = draft.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
             let recipe = Recipe(

@@ -21,8 +21,8 @@ struct TheMealDBRecord: Codable, Sendable {
             id: id,
             name: name,
             thumbnailURL: thumbnailURL.flatMap(URL.init(string:)),
-            category: category,
-            area: area
+            category: category.flatMap { $0.isEmpty ? nil : $0 },
+            area: area.flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 
@@ -69,15 +69,29 @@ enum TheMealDBCatalog {
     }
 
     static func record(for id: String) -> TheMealDBRecord? {
-        guard !MealDBClient.isExcluded(id: id, name: nil) else { return nil }
+        let canonical = MealDBClient.canonicalRecipeID(for: id)
+        guard !MealDBClient.isExcluded(id: canonical, name: nil) else { return nil }
         ensureLoaded()
         lock.lock()
         defer { lock.unlock() }
-        return records[id]
+        return records[canonical]
     }
 
     static func translatedName(for id: String) -> String? {
         record(for: id)?.name
+    }
+
+    static func unambiguousID(matchingTitle title: String) -> String? {
+        let normalizedTitle = CuisineTaxonomy.normalized(title)
+        guard !normalizedTitle.isEmpty else { return nil }
+        ensureLoaded()
+        let matches = lock.withLock {
+            records.values.filter {
+                !MealDBClient.isExcluded(id: $0.id, name: $0.name)
+                    && CuisineTaxonomy.normalized($0.name) == normalizedTitle
+            }
+        }
+        return matches.count == 1 ? matches[0].id : nil
     }
 
     static func search(query: String) -> [DiscoveredRecipeSummary] {

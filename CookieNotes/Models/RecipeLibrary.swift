@@ -19,6 +19,9 @@ protocol RecipeSearchable {
     var isSample: Bool { get }
     var isFavorite: Bool { get }
     var categoryRaw: String { get }
+    var searchableName: String { get }
+    var searchableIngredients: [String] { get }
+    var searchableInstructions: [String] { get }
 }
 
 extension RecipeSearchable {
@@ -27,6 +30,10 @@ extension RecipeSearchable {
     var category: RecipeCategory {
         RecipeCategory(rawValue: categoryRaw) ?? .uncategorized
     }
+
+    var searchableName: String { name }
+    var searchableIngredients: [String] { ingredients }
+    var searchableInstructions: [String] { instructions }
 }
 
 enum RecipeSort: String, CaseIterable, Identifiable {
@@ -96,11 +103,11 @@ enum RecipeLibrary {
 
     static func matches<T: RecipeSearchable>(_ recipe: T, query: String) -> Bool {
         guard !query.isEmpty else { return true }
-        if recipe.name.localizedCaseInsensitiveContains(query) { return true }
+        if recipe.searchableName.localizedCaseInsensitiveContains(query) { return true }
         if recipe.notes.localizedCaseInsensitiveContains(query) { return true }
         if recipe.source.localizedCaseInsensitiveContains(query) { return true }
-        if recipe.ingredients.contains(where: { $0.localizedCaseInsensitiveContains(query) }) { return true }
-        return recipe.instructions.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+        if recipe.searchableIngredients.contains(where: { $0.localizedCaseInsensitiveContains(query) }) { return true }
+        return recipe.searchableInstructions.contains(where: { $0.localizedCaseInsensitiveContains(query) })
     }
 
     static func matches<T: RecipeSearchable>(_ recipe: T, filter: RecipeFilter) -> Bool {
@@ -123,11 +130,11 @@ enum RecipeLibrary {
                 if lhs.dateCreated != rhs.dateCreated {
                     return lhs.dateCreated > rhs.dateCreated
                 }
-                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                return lhs.searchableName.localizedStandardCompare(rhs.searchableName) == .orderedAscending
             }
         case .name:
             return recipes.sorted {
-                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                $0.searchableName.localizedStandardCompare($1.searchableName) == .orderedAscending
             }
         }
     }

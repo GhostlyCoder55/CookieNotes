@@ -463,10 +463,30 @@ enum RecipeTranslator {
 
     /// Translates a discovered recipe summary into French if in French mode.
     static func translatedSummary(_ summary: DiscoveredRecipeSummary) -> DiscoveredRecipeSummary {
-        guard AppLanguageManager.shared.activeLanguage == .french else { return summary }
-        let translatedName = TheMealDBCatalog.translatedName(for: summary.id) ?? summary.name
+        let canonicalID = MealDBClient.canonicalRecipeID(for: summary.id)
+        guard AppLanguageManager.shared.activeLanguage == .french else {
+            return DiscoveredRecipeSummary(
+                id: canonicalID,
+                name: summary.name,
+                thumbnailURL: summary.thumbnailURL,
+                category: summary.category,
+                area: summary.area,
+                illustrationIconID: summary.illustrationIconID
+            )
+        }
+        if let localFR = LocalMealCatalog.record(id: canonicalID, language: .french) {
+            return DiscoveredRecipeSummary(
+                id: canonicalID,
+                name: localFR.name,
+                thumbnailURL: summary.thumbnailURL ?? localFR.thumbnailURL.flatMap(URL.init(string:)),
+                category: summary.category ?? localFR.category,
+                area: summary.area ?? localFR.area,
+                illustrationIconID: summary.illustrationIconID ?? localFR.illustration
+            )
+        }
+        let translatedName = TheMealDBCatalog.translatedName(for: canonicalID) ?? summary.name
         return DiscoveredRecipeSummary(
-            id: summary.id,
+            id: canonicalID,
             name: translatedName,
             thumbnailURL: summary.thumbnailURL,
             category: summary.category,
@@ -477,18 +497,23 @@ enum RecipeTranslator {
 
     /// Translates a full DiscoveredRecipeDetail into French if in French mode.
     static func translateDetail(_ detail: DiscoveredRecipeDetail) -> DiscoveredRecipeDetail {
+        let canonicalID = MealDBClient.canonicalRecipeID(for: detail.id)
         guard AppLanguageManager.shared.activeLanguage == .french else { return detail }
 
+        if let localFR = LocalMealCatalog.record(id: canonicalID, language: .french) {
+            return localFR.detail
+        }
+
         // Check if catalog has pre-translated record
-        if let record = TheMealDBCatalog.record(for: detail.id) {
+        if let record = TheMealDBCatalog.record(for: canonicalID) {
             return DiscoveredRecipeDetail(
-                id: detail.id,
+                id: canonicalID,
                 name: record.name,
-                category: detail.category,
-                area: detail.area,
+                category: detail.category ?? record.category.flatMap { $0.isEmpty ? nil : $0 },
+                area: detail.area ?? record.area.flatMap { $0.isEmpty ? nil : $0 },
                 instructions: RecipeSanitizer.cleanInstructions(record.instructions, recipeName: record.name),
                 ingredients: record.ingredients,
-                thumbnailURL: detail.thumbnailURL,
+                thumbnailURL: detail.thumbnailURL ?? record.thumbnailURL.flatMap(URL.init(string:)),
                 sourceURL: detail.sourceURL,
                 youtubeURL: detail.youtubeURL,
                 tags: detail.tags,
@@ -501,7 +526,7 @@ enum RecipeTranslator {
         let translatedInstructions = detail.instructions.map(translateInstruction)
 
         return DiscoveredRecipeDetail(
-            id: detail.id,
+            id: canonicalID,
             name: detail.name,
             category: detail.category,
             area: detail.area,

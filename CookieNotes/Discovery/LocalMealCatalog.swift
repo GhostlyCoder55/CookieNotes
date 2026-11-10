@@ -78,6 +78,9 @@ enum LocalMealCatalog {
         AppLanguageManager.shared.activeLanguage == .french ? frMeals : enMeals
     }
 
+    static var allEnglishMeals: [LocalMealRecord] { enMeals }
+    static var allFrenchMeals: [LocalMealRecord] { frMeals }
+
     private static func load(file: String) -> [LocalMealRecord] {
         let urls: [URL?] = [
             Bundle.main.url(forResource: file, withExtension: "json"),
@@ -97,8 +100,23 @@ enum LocalMealCatalog {
         let meals: [LocalMealRecord]
     }
 
+    static func record(id: String, language: AppLanguage? = nil) -> LocalMealRecord? {
+        let canonical = MealDBClient.canonicalRecipeID(for: id)
+        let pool = (language ?? AppLanguageManager.shared.activeLanguage) == .french ? frMeals : enMeals
+        return pool.first { $0.id == canonical }
+    }
+
+    static func canonicalID(forSourceURL sourceURL: String) -> String? {
+        let normalized = sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        return enMeals.first {
+            $0.sourceURL?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }?.id
+    }
+
     static func detail(id: String) -> DiscoveredRecipeDetail? {
-        shared.first { $0.id == id }?.detail
+        let canonical = MealDBClient.canonicalRecipeID(for: id)
+        return shared.first { $0.id == canonical }?.detail
     }
 
     static func search(query: String) -> [DiscoveredRecipeSummary] {

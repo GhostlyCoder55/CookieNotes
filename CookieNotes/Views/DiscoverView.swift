@@ -62,12 +62,17 @@ struct DiscoverView: View {
                 }
             }
             .navigationDestination(for: String.self) { mealID in
-                DiscoverDetailView(mealID: mealID) {
+                DiscoverDetailView(mealID: mealID) { outcome in
                     // Pop first so the Discover search bar is back, then toast under it.
                     path = NavigationPath()
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(320))
-                        InAppToast.shared.showRecipeAdded()
+                        switch outcome {
+                        case .inserted:
+                            InAppToast.shared.showRecipeAdded()
+                        case .updatedExisting:
+                            InAppToast.shared.show(String.localized("Already in Library"))
+                        }
                     }
                 }
             }
@@ -238,6 +243,7 @@ struct DiscoverView: View {
 
 struct DiscoverCard: View {
     let recipe: DiscoveredRecipeSummary
+    @ObservedObject private var languageManager = AppLanguageManager.shared
     @State private var times: RecipeTimeEstimate?
 
     var body: some View {
@@ -281,7 +287,7 @@ struct DiscoverCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
         .accessibilityElement(children: .combine)
-        .task(id: recipe.id) {
+        .task(id: "\(recipe.id)_\(languageManager.currentLanguage.code)") {
             times = await MealDBClient.shared.timeEstimate(id: recipe.id)
         }
     }
@@ -296,7 +302,7 @@ struct DiscoverCard: View {
 
 struct DiscoverDetailView: View {
     let mealID: String
-    var onSaved: () -> Void
+    var onSaved: (PersistenceController.DiscoveredRecipeSaveResult) -> Void
 
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var languageManager = AppLanguageManager.shared
@@ -306,6 +312,7 @@ struct DiscoverDetailView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var alreadySaved = false
     @State private var savedTrigger = false
 
     private struct IndexedRow: Identifiable {
@@ -403,7 +410,12 @@ struct DiscoverDetailView: View {
                         Button {
                             Task { await save(detail) }
                         } label: {
-                            Label(isSaving ? String.localized("Saving…") : String.localized("Save to My Recipes"), systemImage: "bookmark.fill")
+                            let labelTitle: String = {
+                                if isSaving { return String.localized("Saving…") }
+                                if alreadySaved { return String.localized("Saved in My Recipes") }
+                                return String.localized("Save to My Recipes")
+                            }()
+                            Label(labelTitle, systemImage: alreadySaved ? "checkmark.circle.fill" : "bookmark.fill")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
@@ -448,6 +460,7 @@ struct DiscoverDetailView: View {
             let loaded = try await MealDBClient.shared.lookup(id: mealID)
             times = loaded.timeEstimate
             ingredientIcons = loaded.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
+            alreadySaved = PersistenceController.existingCatalogRecipe(forID: loaded.id, in: modelContext) != nil
             detail = loaded
         } catch {
             errorMessage = error.localizedDescription
@@ -460,35 +473,32 @@ struct DiscoverDetailView: View {
         let icons = ingredientIcons.count == detail.ingredients.count
             ? ingredientIcons
             : detail.ingredients.map { IngredientCatalog.iconID(matching: $0) ?? "" }
-        let mappedCategory = RecipeCategory.inferred(fromMealDB: detail.category)
-        let recipe = Recipe(
-            name: detail.name,
-            ingredients: detail.ingredients,
-            instructions: RecipeSanitizer.cleanInstructions(detail.instructions),
-            notes: "",
-            source: detail.sourceURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                ? (detail.sourceURL ?? detail.attribution)
-                : detail.attribution,
-            prepTime: times.prep,
-            cookTime: times.cook,
-            isImported: true,
-            categoryRaw: mappedCategory.rawValue,
-            ingredientIconIDs: icons,
-            coverIconID: mappedCategory.preferredCoverIconID
-        )
-        if let url = detail.thumbnailURL,
-            let (data, _) = try? await URLSession.shared.data(from: url),
-            let stored = PhotoProcessing.makeStoredPhoto(from: data) {
-            let photo = RecipePhoto(sortIndex: 0, imageData: stored.imageData, thumbnailData: stored.thumbnailData)
-            photo.recipe = recipe
-            modelContext.insert(photo)
+
+        let existing = PersistenceController.existingCatalogRecipe(forID: detail.id, in: modelContext)
+        let shouldDownloadPhoto = existing?.hasPhotos != true
+        var photoData: Data?
+        if shouldDownloadPhoto,
+           let url = detail.thumbnailURL,
+           let (data, _) = try? await URLSession.shared.data(from: url) {
+            photoData = data
         }
-        modelContext.insert(recipe)
+
+        let englishCounterpart = AppLanguageManager.shared.activeLanguage == .french
+            ? await MealDBClient.shared.cachedEnglishDetail(id: detail.id)
+            : nil
+
         do {
-            try modelContext.save()
+            let outcome = try PersistenceController.saveDiscoveredRecipe(
+                detail,
+                englishDetail: englishCounterpart,
+                ingredientIcons: icons,
+                photoData: photoData,
+                into: modelContext
+            )
+            alreadySaved = true
             savedTrigger.toggle()
             NotificationManager.shared.markUserAsActive()
-            onSaved()
+            onSaved(outcome)
         } catch {
             errorMessage = String.localized("Couldn’t save this recipe. Try again.")
         }
