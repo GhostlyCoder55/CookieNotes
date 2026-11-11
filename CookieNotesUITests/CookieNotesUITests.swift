@@ -17,6 +17,7 @@ final class CookieNotesUITests: XCTestCase {
             "-CookieNotesSkipConsent",
             "-CookieNotesSkipWelcome",
             "-CookieNotesSkipUpdateCheck",
+            "-CookieNotesResetGrocerySort",
             "-cookienotes.appLanguage", language,
             "-cookienotes.hasSelectedInitialLanguage", "YES"
         ]
@@ -82,6 +83,7 @@ final class CookieNotesUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["À propos"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.tabBars.buttons["Bibliothèque"].exists)
         XCTAssertTrue(app.tabBars.buttons["Découvrir"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Liste"].exists)
         XCTAssertFalse(app.staticTexts["Créé par Christopher Ogbonnaya"].exists)
 
         // Switch back to English
@@ -92,6 +94,7 @@ final class CookieNotesUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["About"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.tabBars.buttons["Library"].exists)
         XCTAssertTrue(app.tabBars.buttons["Discover"].exists)
+        XCTAssertTrue(app.tabBars.buttons["List"].exists)
     }
 
     @MainActor
@@ -264,6 +267,7 @@ final class CookieNotesUITests: XCTestCase {
         let expectedTipTitles = [
             "Bibliothèque",
             "Découvrir",
+            "Liste",
             "Illustrations d'ingrédients",
             "Vous êtes prêt !"
         ]
@@ -466,5 +470,125 @@ final class CookieNotesUITests: XCTestCase {
         XCTAssertTrue(confirmDelete.waitForExistence(timeout: 5))
         confirmDelete.tap()
         XCTAssertTrue(app.staticTexts["Your journal is empty"].waitForExistence(timeout: 8))
+    }
+
+    @MainActor
+    func testGroceryListLifecycleAddCheckSortAndClear() throws {
+        let app = launchApp(language: "en")
+        let listTab = app.tabBars.buttons["List"]
+        XCTAssertTrue(listTab.waitForExistence(timeout: 8))
+        listTab.tap()
+
+        XCTAssertTrue(app.staticTexts["Your list is empty"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tap + below to add groceries to your list."].exists)
+
+        let clearButton = app.buttons["grocery-clear-button"]
+        XCTAssertTrue(clearButton.exists)
+        XCTAssertFalse(clearButton.isEnabled)
+
+        // Open Add grocery sheet and add two items sequentially
+        let addFab = app.buttons["add-grocery-button"]
+        XCTAssertTrue(addFab.waitForExistence(timeout: 5))
+        addFab.tap()
+
+        let textField = app.textFields["add-grocery-textfield"]
+        XCTAssertTrue(textField.waitForExistence(timeout: 5))
+        textField.tap()
+        textField.typeText("Bananas")
+
+        let submitButton = app.buttons["add-grocery-submit-button"]
+        XCTAssertTrue(submitButton.exists)
+        submitButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Added Bananas"].waitForExistence(timeout: 5))
+
+        textField.tap()
+        textField.typeText("Apples")
+        submitButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Added Apples"].waitForExistence(timeout: 5))
+
+        let doneButton = app.buttons["add-grocery-done-button"]
+        XCTAssertTrue(doneButton.exists)
+        doneButton.tap()
+
+        let bananasRow = app.buttons.matching(NSPredicate(format: "identifier == 'grocery-item-row' AND label == 'Bananas'")).firstMatch
+        let applesRow = app.buttons.matching(NSPredicate(format: "identifier == 'grocery-item-row' AND label == 'Apples'")).firstMatch
+        XCTAssertTrue(bananasRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(applesRow.exists)
+        XCTAssertTrue(clearButton.isEnabled)
+
+        // Check off Bananas -> Default order still keeps Bananas above Apples
+        bananasRow.tap()
+        XCTAssertLessThan(bananasRow.frame.minY, applesRow.frame.minY)
+
+        // Sort: Unchecked first -> Apples moves above Bananas
+        let sortButton = app.buttons["grocery-sort-button"]
+        XCTAssertTrue(sortButton.exists)
+        sortButton.tap()
+        let uncheckedFirstOption = app.buttons["Unchecked first"]
+        XCTAssertTrue(uncheckedFirstOption.waitForExistence(timeout: 5))
+        uncheckedFirstOption.tap()
+        let applesAboveBananas = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                applesRow.exists && bananasRow.exists && applesRow.frame.minY < bananasRow.frame.minY
+            },
+            object: nil
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [applesAboveBananas], timeout: 5), .completed)
+
+        // Sort: A-Z -> Apples remains above Bananas
+        sortButton.tap()
+        let alphabeticalOption = app.buttons["A–Z"]
+        XCTAssertTrue(alphabeticalOption.waitForExistence(timeout: 5))
+        alphabeticalOption.tap()
+        let applesStillAbove = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                applesRow.exists && bananasRow.exists && applesRow.frame.minY < bananasRow.frame.minY
+            },
+            object: nil
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [applesStillAbove], timeout: 5), .completed)
+
+        // Restore Default sort -> Bananas returns above Apples
+        sortButton.tap()
+        let defaultOption = app.buttons["Default"]
+        XCTAssertTrue(defaultOption.waitForExistence(timeout: 5))
+        defaultOption.tap()
+        let bananasBackAbove = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                applesRow.exists && bananasRow.exists && bananasRow.frame.minY < applesRow.frame.minY
+            },
+            object: nil
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [bananasBackAbove], timeout: 5), .completed)
+
+        // Verify no advertisements are displayed on the list tab
+        XCTAssertFalse(app.staticTexts["ADVERTISEMENT"].exists)
+
+        // Clear button triggers centered pop up alert explaining all will be deleted
+        clearButton.tap()
+        let clearAlert = app.alerts.firstMatch
+        XCTAssertTrue(clearAlert.waitForExistence(timeout: 5))
+        XCTAssertTrue(clearAlert.staticTexts["All items on your grocery list will be deleted."].exists)
+
+        // Two options present: Delete all or Cancel. Verify Cancel preserves items.
+        let cancelButton = clearAlert.buttons["Cancel"]
+        let deleteAllButton = clearAlert.buttons["Delete all"]
+        XCTAssertTrue(cancelButton.exists)
+        XCTAssertTrue(deleteAllButton.exists)
+        cancelButton.tap()
+
+        XCTAssertTrue(applesRow.exists)
+        XCTAssertTrue(bananasRow.exists)
+
+        // Tap Clear again and confirm Delete all -> empties the list
+        clearButton.tap()
+        XCTAssertTrue(clearAlert.waitForExistence(timeout: 5))
+        clearAlert.buttons["Delete all"].tap()
+
+        XCTAssertTrue(app.staticTexts["Your list is empty"].waitForExistence(timeout: 5))
+        XCTAssertFalse(clearButton.isEnabled)
+        XCTAssertFalse(app.staticTexts["ADVERTISEMENT"].exists)
     }
 }

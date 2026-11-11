@@ -15,7 +15,7 @@ enum PersistenceController {
     private(set) static var lastErrorMessage: String?
 
     private static var schema: Schema {
-        Schema([Recipe.self, RecipePhoto.self, LibraryIngredient.self])
+        Schema([Recipe.self, RecipePhoto.self, LibraryIngredient.self, GroceryItem.self])
     }
 
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {

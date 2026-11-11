@@ -90,11 +90,7 @@ struct LanguageSelectionView: View {
                         lineWidth: isSelected ? 2.5 : 1
                     )
                 )
-                .shadow(
-                    color: isSelected ? AppTheme.burntOrange.opacity(0.24) : AppTheme.cardShadow,
-                    radius: isSelected ? 10 : 5,
-                    y: 3
-                )
+                .shadow(color: AppTheme.cardShadow, radius: 5, y: 3)
                 .contentShape(cardShape)
         }
         .buttonStyle(CardButtonStyle())

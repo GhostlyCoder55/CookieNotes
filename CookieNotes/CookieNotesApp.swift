@@ -13,6 +13,9 @@ struct CookieNotesApp: App {
 
     init() {
         AppBadge.clear()
+        if LaunchOptions.resetGrocerySort {
+            UserDefaults.standard.removeObject(forKey: GrocerySort.defaultsKey)
+        }
         let boot = Self.bootstrap()
         container = boot.container
         storageWarning = boot.warning

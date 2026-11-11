@@ -1323,6 +1323,35 @@ struct LocalizationTests {
         imported = try context.fetch(FetchDescriptor<Recipe>())
         #expect(imported.count == 2)
     }
+
+    @Test func groceryStringsLocalizeInEnglishAndFrench() async {
+        let manager = AppLanguageManager.shared
+        let original = manager.activeLanguage
+
+        await manager.setLanguage(.french)
+        #expect(String.localized("List") == "Liste")
+        #expect(String.localized("Clear") == "Effacer")
+        #expect(String.localized("Clear list?") == "Effacer la liste ?")
+        #expect(String.localized("All items on your grocery list will be deleted.") == "Tous les articles de votre liste d'épicerie seront supprimés.")
+        #expect(String.localized("Delete all") == "Tout supprimer")
+        #expect(GrocerySort.defaultOrder.title == "Par défaut")
+        #expect(GrocerySort.uncheckedFirst.title == "Non cochés d'abord")
+        #expect(GrocerySort.alphabetical.title == "A–Z")
+        #expect(String.localized("Added %@", "Lait") == "Lait ajouté")
+
+        await manager.setLanguage(.english)
+        #expect(String.localized("List") == "List")
+        #expect(String.localized("Clear") == "Clear")
+        #expect(String.localized("Clear list?") == "Clear list?")
+        #expect(String.localized("All items on your grocery list will be deleted.") == "All items on your grocery list will be deleted.")
+        #expect(String.localized("Delete all") == "Delete all")
+        #expect(GrocerySort.defaultOrder.title == "Default")
+        #expect(GrocerySort.uncheckedFirst.title == "Unchecked first")
+        #expect(GrocerySort.alphabetical.title == "A–Z")
+        #expect(String.localized("Added %@", "Milk") == "Added Milk")
+
+        await manager.setLanguage(original)
+    }
 }
 
 // MARK: - App Update Checker Tests
@@ -1536,5 +1565,87 @@ struct AppUpdateCheckerTests {
         await manager.checkForUpdates(force: true)
         #expect(manager.updateInfo == nil)
         #expect(manager.isChecking == false)
+    }
+}
+
+private struct GroceryFixture: GrocerySortable {
+    var itemID = UUID()
+    var name: String
+    var isChecked: Bool
+    var sortOrder: Int
+    var dateCreated: Date
+}
+
+@Suite("Grocery list", .serialized)
+struct GroceryListTests {
+    @Test func sanitizesNamesAndLimitsLength() {
+        #expect(GroceryListLogic.sanitizeName("  \n Oat milk \r\n ") == "Oat milk")
+        #expect(GroceryListLogic.sanitizeName("Greek\nyogurt") == "Greek yogurt")
+        #expect(GroceryListLogic.sanitizeName("   \n\t  ").isEmpty)
+
+        let oversized = String(repeating: "x", count: RecipeInputLimits.name + 50)
+        #expect(GroceryListLogic.sanitizeName(oversized).count == RecipeInputLimits.name)
+    }
+
+    @Test func sortsDefaultUncheckedFirstAndAlphabetical() {
+        let baseDate = Date(timeIntervalSince1970: 1_000)
+        let items = [
+            GroceryFixture(name: "Zucchini", isChecked: true, sortOrder: 0, dateCreated: baseDate),
+            GroceryFixture(name: "Apples", isChecked: false, sortOrder: 1, dateCreated: baseDate.addingTimeInterval(1)),
+            GroceryFixture(name: "Milk", isChecked: true, sortOrder: 2, dateCreated: baseDate.addingTimeInterval(2)),
+            GroceryFixture(name: "Bread", isChecked: false, sortOrder: 3, dateCreated: baseDate.addingTimeInterval(3))
+        ]
+
+        #expect(GroceryListLogic.sorted(items, by: .defaultOrder).map(\.name) == [
+            "Zucchini", "Apples", "Milk", "Bread"
+        ])
+        #expect(GroceryListLogic.sorted(items, by: .uncheckedFirst).map(\.name) == [
+            "Apples", "Bread", "Zucchini", "Milk"
+        ])
+        #expect(GroceryListLogic.sorted(items, by: .alphabetical).map(\.name) == [
+            "Apples", "Bread", "Milk", "Zucchini"
+        ])
+    }
+
+    @Test func nextSortOrderIncrementsPastCurrentMaximum() {
+        let empty: [GroceryFixture] = []
+        #expect(GroceryListLogic.nextSortOrder(in: empty) == 0)
+
+        let existing = [
+            GroceryFixture(name: "Eggs", isChecked: false, sortOrder: 0, dateCreated: .now),
+            GroceryFixture(name: "Butter", isChecked: true, sortOrder: 4, dateCreated: .now),
+            GroceryFixture(name: "Flour", isChecked: false, sortOrder: 2, dateCreated: .now)
+        ]
+        #expect(GroceryListLogic.nextSortOrder(in: existing) == 5)
+    }
+
+    @MainActor
+    @Test func groceryItemsPersistInSwiftData() throws {
+        let container = try PersistenceController.makeContainer(inMemory: true)
+        let context = ModelContext(container)
+
+        let milk = GroceryItem(name: "Milk", sortOrder: 0)
+        let eggs = GroceryItem(name: "Eggs", isChecked: true, sortOrder: 1)
+        context.insert(milk)
+        context.insert(eggs)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<GroceryItem>())
+        #expect(fetched.count == 2)
+
+        milk.isChecked = true
+        eggs.name = "Organic Eggs"
+        try context.save()
+
+        let sorted = GroceryListLogic.sorted(
+            try context.fetch(FetchDescriptor<GroceryItem>()),
+            by: .alphabetical
+        )
+        #expect(sorted.map(\.name) == ["Milk", "Organic Eggs"])
+        #expect(sorted.map(\.isChecked) == [true, true])
+
+        context.delete(milk)
+        try context.save()
+        #expect(try context.fetch(FetchDescriptor<GroceryItem>()).count == 1)
     }
 }

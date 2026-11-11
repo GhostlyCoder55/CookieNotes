@@ -503,7 +503,6 @@ struct ColorChip: View {
                         lineWidth: 1
                     )
                 )
-                .shadow(color: selected ? AppTheme.burntOrange.opacity(0.28) : .clear, radius: 6, y: 2)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
@@ -529,6 +528,19 @@ private struct ChipButtonStyle: ButtonStyle {
                 .opacity(configuration.isPressed ? 0.88 : 1)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+        }
+    }
+}
+
+extension View {
+    /// Enforces a soft, progressive blur transition under top navigation bars on iOS 26+
+    /// so scrolled content never produces a hard horizontal hairline divider.
+    @ViewBuilder
+    func softTopScrollEdgeEffect() -> some View {
+        if #available(iOS 26.0, *) {
+            self.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            self
         }
     }
 }

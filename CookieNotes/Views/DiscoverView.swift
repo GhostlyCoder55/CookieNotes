@@ -479,7 +479,8 @@ struct DiscoverDetailView: View {
         var photoData: Data?
         if shouldDownloadPhoto,
            let url = detail.thumbnailURL,
-           let (data, _) = try? await URLSession.shared.data(from: url) {
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           (response as? HTTPURLResponse)?.statusCode == 200 {
             photoData = data
         }
 

@@ -58,11 +58,17 @@ struct ContentView: View {
                     }
                     .tag(1)
 
-                AboutView(adsActive: adsAreUnobstructed && selectedTab == 2)
+                GroceryListView()
+                    .tabItem {
+                        Label(String.localized("List"), systemImage: "checklist")
+                    }
+                    .tag(2)
+
+                AboutView(adsActive: adsAreUnobstructed && selectedTab == 3)
                     .tabItem {
                         Label(String.localized("About"), systemImage: "info.circle.fill")
                     }
-                    .tag(2)
+                    .tag(3)
             }
             .tint(AppTheme.burntOrange)
             .toolbarBackground(AppTheme.background, for: .tabBar)

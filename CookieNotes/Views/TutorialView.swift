@@ -51,12 +51,18 @@ struct TutorialView: View {
             ),
             TutorialStep(
                 id: 3,
+                title: String.localized("List"),
+                description: String.localized("Keep a grocery checklist, check off items as you shop, and organize what you need."),
+                artwork: .foodIcon("bread_loaf")
+            ),
+            TutorialStep(
+                id: 4,
                 title: String.localized("Ingredient art"),
                 description: String.localized("Browse colourful food art when adding ingredients, or type a custom item anytime."),
                 artwork: .foodIcon("tomatoes_vine")
             ),
             TutorialStep(
-                id: 4,
+                id: 5,
                 title: String.localized("You’re all set"),
                 description: String.localized("Add a recipe you know by heart, or discover something new. Happy cooking!"),
                 artwork: .foodIcon("cupcake")
@@ -181,45 +187,13 @@ struct TutorialView: View {
     private func tipArtwork(for artwork: TutorialStep.Artwork) -> some View {
         switch artwork {
         case .appLogo:
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AppTheme.burntOrange.opacity(0.24),
-                                AppTheme.parchment.opacity(0.6),
-                                Color.clear
-                            ],
-                            center: .center,
-                            startRadius: 20,
-                            endRadius: 108
-                        )
-                    )
-                    .frame(width: 216, height: 216)
-
-                Image("AppLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 136, height: 136)
-                    .overlay(
-                        LinearGradient(
-                            colors: [
-                                AppTheme.burntOrange.opacity(0.06),
-                                AppTheme.nearBlack.opacity(0.16)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .mask(
-                            Image("AppLogo")
-                                .resizable()
-                                .scaledToFit()
-                        )
-                    )
-                    .shadow(color: AppTheme.burntOrange.opacity(0.16), radius: 18, y: 6)
-                    .shadow(color: AppTheme.cardShadow, radius: 12, y: 6)
-            }
-            .accessibilityHidden(true)
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 136, height: 136)
+                .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                .shadow(color: AppTheme.cardShadow, radius: 12, y: 6)
+                .accessibilityHidden(true)
         case .foodIcon(let iconID):
             FoodIconView(iconID: iconID, size: 128)
                 .padding(20)

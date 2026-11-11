@@ -43,6 +43,10 @@ enum LaunchOptions {
         ProcessInfo.processInfo.arguments.contains("-CookieNotesResetUpdateDismissal")
     }
 
+    static var resetGrocerySort: Bool {
+        ProcessInfo.processInfo.arguments.contains("-CookieNotesResetGrocerySort")
+    }
+
     static var mockUpdateAvailableVersion: String? {
         let args = ProcessInfo.processInfo.arguments
         guard let index = args.firstIndex(of: "-CookieNotesMockUpdateAvailable"),
