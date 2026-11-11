@@ -1,0 +1,16 @@
+export const RecipeInputLimits = {
+  name: 120,
+  ingredient: 200,
+  ingredientCount: 80,
+  instruction: 2000,
+  instructionCount: 80,
+  notes: 4000,
+  source: 500,
+  photoCount: 5,
+  maxMinutes: 1440,
+  maxServings: 99,
+  libraryIngredientName: 80,
+  libraryIngredientDetail: 40,
+  sharedText: 20000,
+  sharedImageBytes: 8_000_000,
+} as const;
